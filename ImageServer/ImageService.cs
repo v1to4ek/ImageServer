@@ -1,6 +1,6 @@
 ﻿namespace ImageServer
 {
-    //пока что просто посредник
+    //пока-что просто посредник
     public class ImageService
     {
         private readonly IStorage _storage;
