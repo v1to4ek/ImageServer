@@ -1,0 +1,45 @@
+﻿.errpage {
+    font-family: "Inter", sans-serif;
+    display: flex;
+    flex-direction:column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0px;
+    padding: 0px;
+    border: 0px;
+    font-size: 40px;
+    color: silver;
+}
+
+.err-text {
+    background: darkslateblue;
+    padding: 20px;
+    border-radius: 20px;
+}
+
+.html, body {
+    margin: 0px;
+    padding: 0px;
+    border: 0px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.return-btn {
+    background: darkslateblue;
+    padding: 20px;
+    border-radius: 20px;
+    margin:20px;
+    border:hidden;
+    transition: 0.3s;
+}
+
+    .return-btn:hover {
+        transform: scale(1.1);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
+
+.btn-text {
+    color: silver;
+}
+

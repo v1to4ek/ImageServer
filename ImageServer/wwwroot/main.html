@@ -1,0 +1,138 @@
+﻿<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Хранилище изображений</title>
+        <link rel="stylesheet" href="main-style.css" />
+    </head>
+    <body>
+        <script src="/_framework/aspnetcore-browser-refresh.js"></script>
+        <div class="header-controls">
+            <!-- для пост -->
+            <form enctype="multipart/form-data" method="post">
+
+                <input type="file" id="fileSelector" multiple hidden />
+
+                <label for="fileSelector" class="btn-style">
+                    Выбрать из галереи
+                </label>
+
+                <div id="modal" class="modal hidden">
+                    <div class="modal-content">
+                        <h3>Выбранные файлы</h3>
+
+                        <div id="preview"></div>
+
+                        <button id="confirmBtn" type="button" class="btn-style">
+                            Подтвердить
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- для гет -->
+            <form>
+                <label class="btn-style">
+                    Скачать изображение
+                </label>
+            </form>
+
+            <!-- для делит -->
+            <form>
+                <label class="btn-style">
+                    Удалить изображение
+                </label>
+            </form>
+        </div>
+
+        <div id="imgArea" class="images">
+
+        </div>
+
+        <script>
+
+            const fileSelector = document.getElementById("fileSelector");
+            const modal = document.getElementById("modal");
+            const preview = document.getElementById("preview");
+            const confirmBtn = document.getElementById("confirmBtn");
+            const imageContainer = document.getElementById("imgArea");
+
+            // ПРЕВЬЮ
+            fileSelector.addEventListener("change", function () {
+
+                preview.innerHTML = "";
+
+                const files = Array.from(fileSelector.files);
+
+                files.forEach(file => {
+                    const reader = new FileReader();
+
+                    reader.onload = function (e) {
+                        const img = document.createElement("img");
+                        img.src = e.target.result;
+                        preview.appendChild(img);
+                    };
+
+                    reader.readAsDataURL(file);
+                });
+
+                modal.classList.remove("hidden");
+            });
+
+
+            // ОТПРАВКА НА БЭКЕНД
+            confirmBtn.addEventListener("click", async function () {
+
+                const files = fileSelector.files;
+
+                if (files.length === 0) return;
+
+                const formData = new FormData();
+
+                for (let i = 0; i < files.length; i++) {
+                    formData.append("files", files[i]);
+                }
+
+                try {
+                    const response = await fetch("/upload", {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    const text = await response.text();
+
+
+                    if (response.ok) {
+                        alert(text);
+                        renderImages();
+                    } else {
+                        alert("Ошибка");
+                    }
+
+                } catch (err) {
+                    alert("Ошибка соединения с сервером");
+                    console.error(err);
+                }
+
+                modal.classList.add("hidden");
+            });
+
+            renderImages();
+
+            function renderImages() {
+                fetch("/images")
+                    .then(r => r.json())
+                    .then(images => {
+
+                        imageContainer.innerHTML = "";
+
+                        images.forEach(img => {
+                            const el = document.createElement("img");
+                            el.src = img;
+                            imageContainer.appendChild(el);
+                        });
+                    });
+            }
+        </script>
+    </body>
+</html>
