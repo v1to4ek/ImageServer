@@ -2,6 +2,8 @@
 {
     public interface IStorage
     {
-        public 
+        public Task Upload(IFormFile file);
+
+        public Task<string[]> Download();
     }
 }
