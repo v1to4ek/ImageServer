@@ -8,14 +8,20 @@
 
 .header-controls {
     display: flex;
+    margin: 10px;
+    padding-left: 10px;
+    border-radius: 10px;
+    /*эффект стекла*/
+    background-color: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .btn-style {
-    background: darkslateblue;
     color: white;
     border: none;
     padding: 10px;
-    border-radius: 5px;
+    border-radius: 10px;
     text-align: center;
     display: inline-flex;
     align-items: center;
@@ -24,8 +30,12 @@
     font-family: "Segoe UI", sans-serif;
     font-size: 16px;
     cursor: pointer;
-    width: 200px;
+    width: 180px;
     margin: 10px;
+    /*эффект стекла*/
+    background-color: transparent;
+    backdrop-filter: none;
+    border: 1px solid rgb(255, 255, 255, 0.4);
 }
 
     .btn-style:hover {
@@ -53,17 +63,6 @@
     width: 400px;
 }
 
-.hidden {
-    display: none;
-}
-
-.images {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px;
-    margin: 10px;
-}
-
 #preview img {
     width: 80px;
     height: 80px;
@@ -72,8 +71,34 @@
     border-radius: 6px;
 }
 
+.hidden {
+    display: none;
+}
+
+.images-body {
+    margin: 10px;
+    display: flex;
+    border-radius: 10px;
+    /*эффект стекла*/
+    background-color: rgba(255, 255, 255, 0.2); 
+    backdrop-filter: blur(10px); 
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.images {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+    margin: 20px;
+    border-radius: 10px;
+}
+
 #imgArea img {
     width: 100%;
     aspect-ratio: 1;
     object-fit: cover;
+    border-radius: 10px;
 }
+
+
+

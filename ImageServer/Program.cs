@@ -16,6 +16,7 @@ namespace ImageServer
             builder.Services.AddSingleton<ImageService>();
 
             var app = builder.Build();
+            app.UseHttpsRedirection();
             app.UseStaticFiles();
             app.UseImageEndpoints();
             app.UseApplicationEndpoints();
