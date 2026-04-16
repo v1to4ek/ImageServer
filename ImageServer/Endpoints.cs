@@ -4,10 +4,11 @@
     {
         public static void UseImageEndpoints(this WebApplication application)
         {
+            //допилить адекватное отображение страниц + добавить эндпоитны и кнопки для перехода между страницами 
             application.MapGet("/images", async (HttpContext context, ImageLoadingService service) =>
             {
                 var pageNumber = 1;
-                var pageSize = 20;
+                var pageSize = 40;
                 return await service.GetImageAsync(pageNumber, pageSize);
             });
 

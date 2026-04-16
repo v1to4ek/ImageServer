@@ -20,12 +20,24 @@
             var form = await request.ReadFormAsync();
             var images = form.Files;
 
+            var count = 0;
+
             foreach( var image in images )
             {
                 var extention = Path.GetExtension(image.FileName).ToLower();
                 if(!_allowedExtensions.Contains(extention)) { continue; }
                 await _storage.DownloadImageAsync(image);
+                count++;
             }
+
+            var text = count switch
+            {
+                1 => $"{count} изображение",
+                <5 => $"{count} изображения",
+                >=5 => $"{count} изображений"
+            }; 
+
+            await response.WriteAsync($"{text} загружено");
         }
 
         public async Task<PageInfo<ImageInfo>> GetImageAsync(int pageNumber, int pageSize)
