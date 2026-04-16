@@ -8,6 +8,7 @@
     <body>
         <script src="/_framework/aspnetcore-browser-refresh.js"></script>
         <div class="header-controls">
+
             <!-- для пост -->
             <form enctype="multipart/form-data" method="post">
 
@@ -17,17 +18,6 @@
                     Выбрать из галереи
                 </label>
 
-                <div id="modal" class="modal hidden">
-                    <div class="modal-content">
-                        <h3>Выбранные файлы</h3>
-
-                        <div id="preview"></div>
-
-                        <button id="confirmBtn" type="button" class="btn-style">
-                            Подтвердить
-                        </button>
-                    </div>
-                </div>
             </form>
 
             <!-- для гет -->
@@ -51,6 +41,17 @@
             </div>
         </div>
 
+        <div id="modal" class="modal hidden">
+            <div class="modal-content">
+                <h3 class="modal-text">Выбранные файлы</h3>
+
+                <div id="preview"></div>
+
+                <button id="confirmBtn" type="button" class="modal-btn">
+                    Подтвердить
+                </button>
+            </div>
+        </div>
 
         <script>
 
@@ -125,13 +126,21 @@
             function renderImages() {
                 fetch("/images")
                     .then(r => r.json())
-                    .then(images => {
+                    .then(page => {
 
                         imageContainer.innerHTML = "";
 
-                        images.forEach(img => {
+                        page.files.forEach(img => {
                             const el = document.createElement("img");
-                            el.src = img;
+
+                            // теперь у тебя объект, а не строка
+                            el.src = img.thumbnailUrl;
+
+                            // клик по превью → открыть оригинал
+                            el.onclick = () => {
+                                window.open(img.imageUrl, "_blank");
+                            };
+
                             imageContainer.appendChild(el);
                         });
                     });

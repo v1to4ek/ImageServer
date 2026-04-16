@@ -4,9 +4,17 @@
     {
         public static void UseImageEndpoints(this WebApplication application)
         {
-            application.MapGet("/images", async (HttpContext context, ImageService service) => await service.DownloadImageAsync(context));
+            application.MapGet("/images", async (HttpContext context, ImageLoadingService service) =>
+            {
+                var pageNumber = 1;
+                var pageSize = 20;
+                return await service.GetImageAsync(pageNumber, pageSize);
+            });
 
-            application.MapPost("/upload", async (HttpContext context, ImageService service) => await service.UploadImageAsync(context));
+            application.MapPost("/upload", async (HttpContext context, ImageLoadingService service) =>
+            {
+                await service.DownloadImageAsync(context);
+            });
         }
 
         public static void UseApplicationEndpoints(this WebApplication application)

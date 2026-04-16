@@ -1,19 +1,20 @@
 using System.Net;
 using System.Net.Sockets;
+using SixLabors.ImageSharp;
 using System.Net.WebSockets;
 
 namespace ImageServer
 {
     public class Program
     {
-        static string uploadPath = Path.Combine(Directory.GetCurrentDirectory(),"wwwroot" ,"images");
+        static string uploadPath = Path.Combine(Directory.GetCurrentDirectory(),"wwwroot");
 
         public static void Main()
         {
             var builder = WebApplication.CreateBuilder();
 
-            builder.Services.AddSingleton<IStorage>(service => new ImageStorage(uploadPath));
-            builder.Services.AddSingleton<ImageService>();
+            builder.Services.AddSingleton<IFileStorage<Task, Task<ImageInfo[]>>>(storage => new ImageStorage(uploadPath));
+            builder.Services.AddSingleton<ImageLoadingService>();
 
             var app = builder.Build();
             app.UseHttpsRedirection();

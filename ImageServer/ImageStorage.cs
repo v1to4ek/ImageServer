@@ -1,35 +1,56 @@
-﻿namespace ImageServer
+﻿using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+
+namespace ImageServer
 {
-    public class ImageStorage  : IStorage
+    public class ImageStorage : IFileStorage<Task, Task<ImageInfo[]>>
     {
-        private readonly string _path;
+        private readonly string _imagePath;
+        private readonly string _thumbnailPath;
 
         public ImageStorage(string path)
         {
-            _path = path;
-            if(!Directory.Exists(_path)) Directory.CreateDirectory(_path);
+            _imagePath = Path.Combine(path, "images");
+            _thumbnailPath = Path.Combine(path, "thumbnails");
+            if (!Directory.Exists(_imagePath)) Directory.CreateDirectory(_imagePath);
+            if (!Directory.Exists(_thumbnailPath)) Directory.CreateDirectory(_thumbnailPath);
         }
 
-        public Task<string[]> Download()
+        public Task<ImageInfo[]> GetImagesUrls()
         {
-            var files = Directory.GetFiles(_path)
-                .Select(file =>"/images/" + Path.GetFileName(file))
-                .ToArray();
+            var imageUrls = Directory.GetFiles(_imagePath)
+                .Select(file => "/images/" + Path.GetFileName(file));
 
-            return Task.FromResult(files);
+            var thumbnailUrls = Directory.GetFiles(_thumbnailPath)
+                .Select(file => "/thumbnails/" + Path.GetFileName(file));
+
+            var result = imageUrls.Zip(thumbnailUrls, (img, thumb) => new ImageInfo
+            {
+                ImageUrl = img,
+                ThumbnailUrl = thumb
+            }).ToArray();
+
+            return Task.FromResult(result);
         }
 
-        public async Task Upload(IFormFile image)
+        public async Task DownloadImageAsync(IFormFile image)
         {
-            var imageName = $"{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+            var extention = Path.GetExtension(image.FileName).ToLower();
+            var itemName = $"{Guid.NewGuid()}{extention}"; 
 
-            var imagePath = Path.Combine(_path, imageName); 
+            var imagePath = Path.Combine(_imagePath, itemName);
+            var thumbnailPath = Path.Combine(_thumbnailPath, itemName);
 
-            using(var fileStream = new FileStream(imagePath, FileMode.Create))
+            using (var fileStream = new FileStream(imagePath, FileMode.Create))
             {
                 await image.CopyToAsync(fileStream);
             }
-        }
 
+            using var img = await Image.LoadAsync(image.OpenReadStream());
+
+            img.Mutate(img => img.Resize(new ResizeOptions { Size = new Size(300, 0), Mode = ResizeMode.Max }));
+
+            await img.SaveAsync(thumbnailPath);
+        }
     }
 }
