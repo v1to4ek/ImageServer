@@ -61,7 +61,40 @@
             const confirmBtn = document.getElementById("confirmBtn");
             const imageContainer = document.getElementById("imgArea");
 
-            // ПРЕВЬЮ
+            //временно задаём параметры для пагинации вручную
+            const pageNumber = 3;
+            const pageSize = 10;
+
+            const params = new URLSearchParams({
+                pageNumber: pageNumber.toString(),
+                pageSize: pageSize.toString()
+            });
+
+            renderImages();
+
+            //отображение картинок 
+            function renderImages() {
+                fetch(`/images?${params}`)
+                    .then(r => r.json())
+                    .then(page => {
+
+                        imageContainer.innerHTML = "";
+
+                        page.files.forEach(img => {
+                            const el = document.createElement("img");
+
+                            el.src = img.thumbnailUrl;
+
+                            el.onclick = () => {
+                                window.open(img.imageUrl, "_blank");
+                            };
+
+                            imageContainer.appendChild(el);
+                        });
+                    });
+            }
+
+            // генерация превью
             fileSelector.addEventListener("change", function () {
 
                 preview.innerHTML = "";
@@ -83,8 +116,7 @@
                 modal.classList.remove("hidden");
             });
 
-
-            // ОТПРАВКА НА БЭКЕНД
+            // отправка на бэк
             confirmBtn.addEventListener("click", async function () {
 
                 const files = fileSelector.files;
@@ -121,30 +153,6 @@
                 modal.classList.add("hidden");
             });
 
-            renderImages();
-
-            function renderImages() {
-                fetch("/images")
-                    .then(r => r.json())
-                    .then(page => {
-
-                        imageContainer.innerHTML = "";
-
-                        page.files.forEach(img => {
-                            const el = document.createElement("img");
-
-                            // теперь у тебя объект, а не строка
-                            el.src = img.thumbnailUrl;
-
-                            // клик по превью → открыть оригинал
-                            el.onclick = () => {
-                                window.open(img.imageUrl, "_blank");
-                            };
-
-                            imageContainer.appendChild(el);
-                        });
-                    });
-            }
         </script>
     </body>
 </html>

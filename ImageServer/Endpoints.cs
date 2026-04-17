@@ -1,14 +1,14 @@
-﻿namespace ImageServer
+﻿using System.Net;
+
+namespace ImageServer
 {
     public static class Endpoints
     {
         public static void UseImageEndpoints(this WebApplication application)
         {
             //допилить адекватное отображение страниц + добавить эндпоитны и кнопки для перехода между страницами 
-            application.MapGet("/images", async (HttpContext context, ImageLoadingService service) =>
+            application.MapGet("/images", async (ImageLoadingService service, int pageNumber = 1, int pageSize = 40) =>
             {
-                var pageNumber = 1;
-                var pageSize = 40;
                 return await service.GetImageAsync(pageNumber, pageSize);
             });
 
