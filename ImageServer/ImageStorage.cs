@@ -3,7 +3,7 @@ using SixLabors.ImageSharp.Processing;
 
 namespace ImageServer
 {
-    public class ImageStorage : IFileStorage<Task, Task<ImageInfo[]>>
+    public class ImageStorage : IFileStorage<ImageInfo[]>
     {
         private readonly string _imagePath;
         private readonly string _thumbnailPath;

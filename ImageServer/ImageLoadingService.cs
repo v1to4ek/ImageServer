@@ -3,11 +3,11 @@
     //пока-что просто посредник
     public class ImageLoadingService
     {
-        private readonly IFileStorage<Task, Task<ImageInfo[]>> _storage;
+        private readonly IFileStorage<ImageInfo[]> _storage;
 
         private readonly string[] _allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
 
-        public ImageLoadingService(IFileStorage<Task, Task<ImageInfo[]>> storage)
+        public ImageLoadingService(IFileStorage<ImageInfo[]> storage)
         {
             _storage = storage;
         }

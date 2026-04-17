@@ -1,16 +1,13 @@
-﻿namespace ImageServer
-{
-    //антипаттерн, переделать обобщенную сигнатуру
-    //обобщить типизацию данных внутри таска, а не самого таска в GetImagesUrls
-    //убрать дженерик из DownloadImageAsync - таск ниче не возвращает в принципе 
-    //переименовать методы
-    //в дальнейшем разделить интерфейс
-    public interface IFileStorage<T,K> 
-        where T : Task 
-        where K : Task
-    {
-        public K GetImagesUrls();
+﻿using SixLabors.ImageSharp;
 
-        public T DownloadImageAsync(IFormFile file);
+namespace ImageServer
+{
+    //Переделана обобщённая сигнатура метода GetImagesUrls, теперь обобщается тип а не таск
+    //Допилить интерфейс для типа ImageInfo(и аналогичных) и ограничение обобщения для интерфейса 
+    public interface IFileStorage<T> 
+    {
+        public Task<T> GetImagesUrls();
+
+        public Task DownloadImageAsync(IFormFile file);
     }
 }
