@@ -5,6 +5,7 @@ using System.Net.WebSockets;
 
 namespace ImageServer
 {
+    //в дальнейшем можно добавть обработчик, чтобы можно было выбирать способ отображения изображений 
     public class Program
     {
         static string uploadPath = Path.Combine(Directory.GetCurrentDirectory(),"wwwroot");
