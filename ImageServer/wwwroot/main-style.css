@@ -11,7 +11,9 @@ body {
     display: flex;
     margin: 10px;
     padding-left: 10px;
+    padding-right: 10px;
     border-radius: 10px;
+    align-items: center;
     /*эффект стекла*/
     background-color: rgba(255, 255, 255, 0.2);
     backdrop-filter: blur(10px);
@@ -20,7 +22,6 @@ body {
 
 .btn-style {
     color: white;
-    border: none;
     padding: 10px;
     border-radius: 10px;
     text-align: center;
@@ -31,7 +32,7 @@ body {
     font-family: "Segoe UI", sans-serif;
     font-size: 16px;
     cursor: pointer;
-    width: 180px;
+    width: 60px;
     margin: 10px;
     /*эффект стекла*/
     background-color: transparent;
@@ -44,6 +45,34 @@ body {
         box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     }
 
+.control-btn-style {
+    color: white;
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.3s;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 16px;
+    cursor: pointer;
+    width: 60px;
+    margin: 10px;
+    /*эффект стекла*/
+    background-color: transparent;
+    backdrop-filter: none;
+    border: 1px solid rgb(255, 255, 255, 0.4);
+}
+
+    .control-btn-style:hover {
+        transform: scale(1.1);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
+
+.right-btn-pos-style{
+    margin-left:auto;
+}
 
 .modal {
     position: fixed;

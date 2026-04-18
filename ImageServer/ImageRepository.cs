@@ -3,12 +3,12 @@ using SixLabors.ImageSharp.Processing;
 
 namespace ImageServer
 {
-    public class ImageStorage : IFileStorage<ImageInfo[]>
+    public class ImageRepository : IFileSRepository<ImageInfo[]>
     {
         private readonly string _imagePath;
         private readonly string _thumbnailPath;
 
-        public ImageStorage(string path)
+        public ImageRepository(string path)
         {
             _imagePath = Path.Combine(path, "images");
             _thumbnailPath = Path.Combine(path, "thumbnails");

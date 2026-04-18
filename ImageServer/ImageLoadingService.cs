@@ -3,23 +3,17 @@
     //пока-что просто посредник
     public class ImageLoadingService
     {
-        private readonly IFileStorage<ImageInfo[]> _storage;
+        private readonly IFileSRepository<ImageInfo[]> _storage;
 
         private readonly string[] _allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
 
-        public ImageLoadingService(IFileStorage<ImageInfo[]> storage)
+        public ImageLoadingService(IFileSRepository<ImageInfo[]> storage)
         {
             _storage = storage;
         }
 
-        public async Task DownloadImageAsync(HttpContext context)
+        public async Task<int> DownloadImagesAsync(IFormFileCollection images)
         {
-            var request = context.Request;
-            var response = context.Response;
-
-            var form = await request.ReadFormAsync();
-            var images = form.Files;
-
             var count = 0;
 
             foreach( var image in images )
@@ -30,14 +24,7 @@
                 count++;
             }
 
-            var text = count switch
-            {
-                1 => $"{count} изображение",
-                <5 => $"{count} изображения",
-                >=5 => $"{count} изображений"
-            }; 
-
-            await response.WriteAsync($"{text} загружено");
+            return count;
         }
 
         public async Task<PageInfo<ImageInfo>> GetImageAsync(int pageNumber, int pageSize)

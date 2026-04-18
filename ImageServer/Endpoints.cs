@@ -14,7 +14,14 @@ namespace ImageServer
 
             application.MapPost("/upload", async (HttpContext context, ImageLoadingService service) =>
             {
-                await service.DownloadImageAsync(context);
+
+                var form = await context.Request.ReadFormAsync();
+
+                var files = form.Files;
+
+                var count = await service.DownloadImagesAsync(files);
+
+                return Results.Ok($"изображений загружено: {count}");
             });
         }
 

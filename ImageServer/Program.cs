@@ -14,7 +14,7 @@ namespace ImageServer
         {
             var builder = WebApplication.CreateBuilder();
 
-            builder.Services.AddSingleton<IFileStorage<ImageInfo[]>>(storage => new ImageStorage(uploadPath));
+            builder.Services.AddSingleton<IFileSRepository<ImageInfo[]>>(storage => new ImageRepository(uploadPath));
             builder.Services.AddSingleton<ImageLoadingService>();
 
             var app = builder.Build();

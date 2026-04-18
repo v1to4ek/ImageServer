@@ -1,13 +1,21 @@
 ﻿<!DOCTYPE html>
 <html>
-    <head>
-        <meta charset="utf-8" />
-        <title>Хранилище изображений</title>
-        <link rel="stylesheet" href="main-style.css" />
-    </head>
+<head>
+    <meta charset="utf-8" />
+    <title>Хранилище изображений</title>
+    <link rel="stylesheet" href="main-style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+</head>
     <body>
         <script src="/_framework/aspnetcore-browser-refresh.js"></script>
         <div class="header-controls">
+
+            <form>
+                <label class="control-btn-style" id="leftbtn">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </label>
+            </form>
 
             <!-- для пост -->
             <form enctype="multipart/form-data" method="post">
@@ -15,7 +23,7 @@
                 <input type="file" id="fileSelector" multiple hidden />
 
                 <label for="fileSelector" class="btn-style">
-                    Выбрать из галереи
+                    <i class="fa-solid fa-upload"></i>
                 </label>
 
             </form>
@@ -23,16 +31,23 @@
             <!-- для гет -->
             <form>
                 <label class="btn-style">
-                    Скачать изображение
+                    <i class="fa-solid fa-download"></i>
                 </label>
             </form>
 
             <!-- для делит -->
             <form>
                 <label class="btn-style">
-                    Удалить изображение
+                    <i class="fa-solid fa-trash-can"></i>
                 </label>
             </form>
+
+            <form class="right-btn-pos-style">
+                <label class="control-btn-style" id="rightbtn">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </label>
+            </form>
+
         </div>
 
         <div class="images-body">
@@ -60,20 +75,36 @@
             const preview = document.getElementById("preview");
             const confirmBtn = document.getElementById("confirmBtn");
             const imageContainer = document.getElementById("imgArea");
+            const leftPageControl = document.getElementById("leftbtn");
+            const rightPageControl = document.getElementById("rightbtn");
 
             //временно задаём параметры для пагинации вручную
-            const pageNumber = 3;
-            const pageSize = 10;
+            var pageNumber = 1;
+            var pageSize = 24;
 
-            const params = new URLSearchParams({
-                pageNumber: pageNumber.toString(),
-                pageSize: pageSize.toString()
+            loadPageData()
+
+            leftPageControl.addEventListener("click", function () {
+
+                if (pageNumber > 1) pageNumber--;
+
+                loadPageData()
             });
 
-            renderImages();
+            rightPageControl.addEventListener("click", function () {
+
+                pageNumber++;
+
+                loadPageData()
+            });
 
             //отображение картинок 
-            function renderImages() {
+            function loadPageData() {
+                const params = new URLSearchParams({
+                    pageNumber: pageNumber.toString(),
+                    pageSize: pageSize.toString()
+                });
+
                 fetch(`/images?${params}`)
                     .then(r => r.json())
                     .then(page => {
@@ -140,7 +171,7 @@
 
                     if (response.ok) {
                         alert(text);
-                        renderImages();
+                        loadPageData();
                     } else {
                         alert("Ошибка");
                     }
