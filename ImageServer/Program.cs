@@ -1,7 +1,8 @@
+using ImageServer.Database;
+using ImageServer.Services;
+using SixLabors.ImageSharp;
 using System.Net;
 using System.Net.Sockets;
-using SixLabors.ImageSharp;
-using System.Net.WebSockets;
 
 namespace ImageServer
 {
@@ -14,14 +15,16 @@ namespace ImageServer
         {
             var builder = WebApplication.CreateBuilder();
 
-            builder.Services.AddSingleton<IFileSRepository<ImageInfo[]>>(storage => new ImageRepository(uploadPath));
-            builder.Services.AddSingleton<ImageLoadingService>();
+            builder.Services.AddSingleton<IImageProcessor>(processor => new ImageProcessor());
+            builder.Services.AddSingleton<IStorage>(storage => new LocalRepository(uploadPath));
+            builder.Services.AddDbContext<AppDBContext>();
+            builder.Services.AddScoped<ImageService>();
 
             var app = builder.Build();
             app.UseHttpsRedirection();
             app.UseStaticFiles();
-            app.UseImageEndpoints();
-            app.UseApplicationEndpoints();
+            app.AddApplicationEndpoints();
+            app.AddImageAPI();
 
             PrintAdress();
 

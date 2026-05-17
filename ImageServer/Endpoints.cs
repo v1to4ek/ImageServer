@@ -1,44 +1,49 @@
-﻿using System.Net;
+﻿using ImageServer.Services;
 
 namespace ImageServer
 {
     public static class Endpoints
     {
-        public static void UseImageEndpoints(this WebApplication application)
+        public static void AddImageAPI(this WebApplication webApplication)
         {
-            //допилить адекватное отображение страниц + добавить эндпоитны и кнопки для перехода между страницами 
-            application.MapGet("/images", async (ImageLoadingService service, int pageNumber = 1, int pageSize = 40) =>
+            ////получение страницы превьюшек
+            //webApplication.MapGet("", async (ImageService service, PagedRequest request) =>
+            //{
+
+            //});
+
+            ////получние полноценной картинки
+            //webApplication.MapGet("", async (ImageService service, string id) =>
+            //{
+
+            //});
+
+            ////скачивание картинки
+            //webApplication.MapGet("", async (ImageService service, string id) =>
+            //{
+
+            //});
+
+            //загрузка картинок на сервер
+            webApplication.MapPost("/upload", async (ImageService service, IFormFileCollection formFiles) =>
             {
-                return await service.GetImageAsync(pageNumber, pageSize);
-            });
-
-            application.MapPost("/upload", async (HttpContext context, ImageLoadingService service) =>
-            {
-
-                var form = await context.Request.ReadFormAsync();
-
-                var files = form.Files;
-
-                var count = await service.DownloadImagesAsync(files);
-
+                var count = await service.SaveImageAsync(formFiles);
                 return Results.Ok($"изображений загружено: {count}");
-            });
+            }).DisableAntiforgery();
+
+            ////удаление картинки
+            //webApplication.MapDelete("", async (ImageService service, string id) =>
+            //{
+
+            //});
         }
 
-        public static void UseApplicationEndpoints(this WebApplication application)
+        public static void AddApplicationEndpoints(this WebApplication webApplication)
         {
-
-            application.MapGet("/", async context =>
+            webApplication.MapGet("/", async context =>
             {
                 context.Response.ContentType = "text/html; charset=utf-8";
-                await context.Response.SendFileAsync(Path.Combine(application.Environment.ContentRootPath, "wwwroot", "main.html"));
-            });
-
-            application.MapFallback(async context =>
-            {
-                context.Response.ContentType = "text/html; charset=utf-8";
-                context.Response.StatusCode = 404;
-                await context.Response.SendFileAsync(Path.Combine(application.Environment.ContentRootPath, "wwwroot", "not-found.html"));
+                await context.Response.SendFileAsync(Path.Combine(webApplication.Environment.ContentRootPath, "wwwroot", "main.html"));
             });
         }
     }
