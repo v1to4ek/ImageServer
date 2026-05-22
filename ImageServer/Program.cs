@@ -14,7 +14,10 @@ namespace ImageServer
         public static void Main()
         {
             var builder = WebApplication.CreateBuilder();
-
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.Limits.MaxRequestBodySize = 100_000_000;
+            });
             builder.Services.AddSingleton<IImageProcessor>(processor => new ImageProcessor());
             builder.Services.AddSingleton<IStorage>(storage => new LocalRepository(uploadPath));
             builder.Services.AddDbContext<AppDBContext>();

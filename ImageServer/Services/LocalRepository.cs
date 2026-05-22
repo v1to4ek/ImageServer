@@ -15,13 +15,15 @@
 
             var filePath = Path.Combine(fullPath, fileName);
 
+            var urlPath = Path.Combine(relativePath, fileName).Replace("\\", "/");
+
             Directory.CreateDirectory(fullPath);
 
             await using var fileStream = new FileStream(filePath, FileMode.Create);
 
             await stream.CopyToAsync(fileStream);
 
-            return filePath;
+            return urlPath;
         }
     }
 }

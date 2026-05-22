@@ -1,5 +1,8 @@
 ﻿using ImageServer.Database;
+using ImageServer.DTOs;
 using ImageServer.Models;
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Concurrent;
 
 namespace ImageServer.Services
 {
@@ -19,41 +22,50 @@ namespace ImageServer.Services
         }
 
         //загрузка картинок
-        public async Task<int> SaveImageAsync(IFormFileCollection images)
+        public async Task<int> SaveImagesAsync(IFormFileCollection images)
         {
-            int count = 0;
+            var resultModels = new ConcurrentBag<ImageModel>();
 
-            foreach (var image in images)
-            {
-                var extention = Path.GetExtension(image.FileName).ToLower();
+            await Parallel.ForEachAsync(images,
+                new ParallelOptions 
+                { 
+                    MaxDegreeOfParallelism = 4 
+                },
+                async (image,ct) =>
+                {
+                    var imageModel = await ProcessAsync(image,ct);
+                    resultModels.Add(imageModel);
+                });
 
-                var id = Guid.NewGuid();
-
-                var imgName = $"{id}{extention}";
-                var thumbName = $"{id}.webp";
-
-                await using var originalStream = image.OpenReadStream();
-                await using var previewSourceStream = new MemoryStream();
-                await originalStream.CopyToAsync(previewSourceStream);
-
-                previewSourceStream.Position = 0;
-
-                await using var previewStream = await _processor.GenerateThumbnailAsync(previewSourceStream, 300, 300);
-
-                originalStream.Position = 0;
-
-                var imgUrl = await _storage.SaveAsync(originalStream, imgName, "images");
-                var thumbUrl = await _storage.SaveAsync(previewStream, thumbName, "previews");
-
-                var imgModel = new ImageModel(id, imgUrl, thumbUrl);
-
-                await _DBcontext.AddAsync(imgModel);
-
-                count++;
-            }
+            await _DBcontext.AddRangeAsync(resultModels);
 
             await _DBcontext.SaveChangesAsync();
-            return count;
+
+            return resultModels.Count;
+        }
+
+        private async Task<ImageModel> ProcessAsync(IFormFile image, CancellationToken ct)
+        {
+            var extension = Path.GetExtension(image.FileName).ToLower();
+            var id = Guid.NewGuid();
+            var imgName = $"{id}{extension}";
+            var thumbName = $"{id}.webp";
+
+            await using var originalStream = image.OpenReadStream();
+            await using var previewSourceStream = new MemoryStream();
+            await originalStream.CopyToAsync(previewSourceStream);
+
+            previewSourceStream.Position = 0;
+            originalStream.Position = 0;
+
+            await using var previewStream = await _processor.GenerateThumbnailAsync(previewSourceStream, 300, 300);
+
+            var imgUrl = _storage.SaveAsync(originalStream, imgName, "images");
+            var thumbUrl = _storage.SaveAsync(previewStream, thumbName, "previews");
+
+            await Task.WhenAll(imgUrl, thumbUrl);
+
+            return new ImageModel(id , await imgUrl, await thumbUrl);
         }
 
         //получние полноценной картинки
@@ -62,10 +74,20 @@ namespace ImageServer.Services
 
         }
 
-        //получение превью
-        public async Task GetThumbAsync()
+        //получение страницы превью
+        public async Task<PagedResponse<ImageDTO>> GetPagedResultAsync(PagedRequest request)
         {
+            var imgQuery = _DBcontext.Images
+                .AsNoTracking()
+                .OrderByDescending(img => img.CreatedAt);
 
+            var itemsToTake = await imgQuery
+                .Skip((request.PageNumber - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .Select(img => new ImageDTO(img.ImageUrl,img.PreviewUrl))
+                .ToListAsync();
+
+            return new PagedResponse<ImageDTO>(itemsToTake);
         }
 
         //удаление картинки

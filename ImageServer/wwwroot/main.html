@@ -111,10 +111,10 @@
 
                         imageContainer.innerHTML = "";
 
-                        page.files.forEach(img => {
+                        page.items.forEach(img => {
                             const el = document.createElement("img");
 
-                            el.src = img.thumbnailUrl;
+                            el.src = img.previewUrl;
 
                             el.onclick = () => {
                                 window.open(img.imageUrl, "_blank");
