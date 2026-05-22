@@ -11,10 +11,6 @@ namespace ImageServer
             //получение страницы превьюшек
             webApplication.MapGet("/images", async (ImageService service,[AsParameters] PagedRequest request) =>
             {
-                Console.WriteLine(request.PageNumber);
-
-                Console.WriteLine(request.PageSize);
-
                 var response = await service.GetPagedResultAsync(request);
 
                 return Results.Ok(response);
