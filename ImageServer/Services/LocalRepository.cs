@@ -25,5 +25,25 @@
 
             return urlPath;
         }
+
+        public Stream GetFile(string fileName, string relativePath)
+        {
+            var filePath = Path.Combine(_storagePath, relativePath, fileName);
+
+            if (!File.Exists(filePath)) throw new FileNotFoundException();
+
+            var stream = new FileStream(filePath,FileMode.Open,FileAccess.Read);
+
+            return stream;
+        }
+
+        public void DeleteFile(string fileName, string relativePath)
+        {
+            var filePath = Path.Combine(_storagePath, relativePath, fileName);
+
+            if (!File.Exists(filePath)) throw new FileNotFoundException();
+
+            File.Delete(filePath);
+        }
     }
 }

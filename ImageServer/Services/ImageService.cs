@@ -69,9 +69,11 @@ namespace ImageServer.Services
         }
 
         //получние полноценной картинки
-        public async Task GetImageAsync()
+        public Stream GetImage(string id) 
         {
+            var imgStream = _storage.GetFile(id, "images");
 
+            return imgStream;
         }
 
         //получение страницы превью
@@ -81,19 +83,33 @@ namespace ImageServer.Services
                 .AsNoTracking()
                 .OrderByDescending(img => img.CreatedAt);
 
+            var totalCount = await imgQuery.CountAsync();
+
             var itemsToTake = await imgQuery
                 .Skip((request.PageNumber - 1) * request.PageSize)
                 .Take(request.PageSize)
                 .Select(img => new ImageDTO(img.ImageUrl,img.PreviewUrl))
                 .ToListAsync();
 
-            return new PagedResponse<ImageDTO>(itemsToTake);
+            return new PagedResponse<ImageDTO>(
+                itemsToTake,
+                totalCount,
+                request.PageNumber,
+                request.PageSize);
         }
 
         //удаление картинки
-        public async Task DeleteAsync()
+        public async Task DeleteAsync(string id)
         {
+            var image = await _DBcontext.Images.FindAsync(id) ?? throw new Exception("Сущность не найдена");
 
+            _DBcontext.Images.Remove(image);
+
+            await _DBcontext.SaveChangesAsync();
+
+            _storage.DeleteFile(id, "images");
+
+            _storage.DeleteFile(id, "previews");
         }
     }
 }

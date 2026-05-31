@@ -1,6 +1,5 @@
 ﻿using ImageServer.DTOs;
 using ImageServer.Services;
-using Microsoft.AspNetCore.Mvc;
 
 namespace ImageServer
 {
@@ -8,7 +7,7 @@ namespace ImageServer
     {
         public static void AddImageAPI(this WebApplication webApplication)
         {
-            //получение страницы превьюшек
+            //получение страницы картинок
             webApplication.MapGet("/images", async (ImageService service,[AsParameters] PagedRequest request) =>
             {
                 var response = await service.GetPagedResultAsync(request);
@@ -17,17 +16,13 @@ namespace ImageServer
 
             });
 
-            ////получние полноценной картинки
-            //webApplication.MapGet("", async (ImageService service, string id) =>
-            //{
+            //скачивание картинки
+            webApplication.MapGet("/download", (ImageService service, string id) =>
+            {
+                var stream = service.GetImage(id);
 
-            //});
-
-            ////скачивание картинки
-            //webApplication.MapGet("", async (ImageService service, string id) =>
-            //{
-
-            //});
+                return Results.File(stream);
+            });
 
             //загрузка картинок на сервер
             webApplication.MapPost("/upload", async (ImageService service, IFormFileCollection formFiles) =>
@@ -38,11 +33,11 @@ namespace ImageServer
 
             }).DisableAntiforgery();
 
-            ////удаление картинки
-            //webApplication.MapDelete("", async (ImageService service, string id) =>
-            //{
-
-            //});
+            //удаление картинки
+            webApplication.MapDelete("/delete", async (ImageService service, string id) =>
+            {
+                await service.DeleteAsync(id);
+            });
         }
 
         public static void AddApplicationEndpoints(this WebApplication webApplication)
