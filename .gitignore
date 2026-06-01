@@ -364,3 +364,4 @@ FodyWeavers.xsd
 /ImageServer/wwwroot/images
 /ImageServer/wwwroot/thumbnails
 /ImageServer/wwwroot/previews
+/ImageServer/configuration.json
