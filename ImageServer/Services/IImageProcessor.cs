@@ -2,6 +2,7 @@
 {
     public interface IImageProcessor
     {
-        public Task<Stream> GenerateThumbnailAsync(Stream inputStream, int width, int height);
+        public Task<TResult> ProcessAsync<TResult, TStrategy>(Stream stream, CancellationToken ct = default)
+            where TStrategy : class, IProcessingStrategy<TResult>;
     }
 }

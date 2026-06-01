@@ -9,7 +9,7 @@ namespace ImageServer
     //в дальнейшем можно добавть обработчик, чтобы можно было выбирать способ отображения изображений 
     public class Program
     {
-        static string uploadPath = Path.Combine(Directory.GetCurrentDirectory(),"wwwroot");
+        static readonly string uploadPath = Path.Combine(Directory.GetCurrentDirectory(),"wwwroot");
 
         public static void Main()
         {
@@ -18,7 +18,8 @@ namespace ImageServer
             {
                 options.Limits.MaxRequestBodySize = 100_000_000;
             });
-            builder.Services.AddSingleton<IImageProcessor>(processor => new ImageProcessor());
+            builder.Services.AddSingleton(strategy => new ThumbnailProcessor(300, 300));
+            builder.Services.AddSingleton<IImageProcessor, ImageProcessor>();
             builder.Services.AddSingleton<IStorage>(storage => new LocalRepository(uploadPath));
             builder.Services.AddDbContext<AppDBContext>();
             builder.Services.AddScoped<ImageService>();

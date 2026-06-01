@@ -1,33 +1,21 @@
-﻿
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Processing;
-
-namespace ImageServer.Services
+﻿namespace ImageServer.Services
 {
     public class ImageProcessor : IImageProcessor
     {
-        private static readonly string[] _allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+        private readonly IServiceProvider _serviceProvider;
 
-        public bool isValid(string imageName) => _allowedExtensions.Contains(Path.GetExtension(imageName).ToLower());
+        public ImageProcessor(IServiceProvider serviceProvider) => _serviceProvider = serviceProvider;
 
-        public async Task<Stream> GenerateThumbnailAsync(Stream inputStream, int width, int height)
+        public async Task<TResult> ProcessAsync<TResult, TStrategy>
+            (Stream inputStream,
+            CancellationToken ct = default)
+            where TStrategy : class, IProcessingStrategy<TResult>
         {
-            using var image = await Image.LoadAsync(inputStream);
+            var processor = _serviceProvider.GetRequiredService<TStrategy>();
 
-            image.Mutate(image=>image.Resize(new ResizeOptions
-            {
-                Size = new Size(width, height),
-                Mode = ResizeMode.Max
-            }));
+            var result = await processor.ProcessAsync(inputStream, ct);
 
-            var outputStream = new MemoryStream();
-
-            await image.SaveAsync(outputStream, new WebpEncoder());
-
-            outputStream.Position = 0;
-
-            return outputStream;
+            return result;
         }
     }
 }

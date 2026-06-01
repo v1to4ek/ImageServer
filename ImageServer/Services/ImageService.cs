@@ -53,12 +53,12 @@ namespace ImageServer.Services
 
             await using var originalStream = image.OpenReadStream();
             await using var previewSourceStream = new MemoryStream();
-            await originalStream.CopyToAsync(previewSourceStream);
+            await originalStream.CopyToAsync(previewSourceStream, ct);
 
             previewSourceStream.Position = 0;
             originalStream.Position = 0;
 
-            await using var previewStream = await _processor.GenerateThumbnailAsync(previewSourceStream, 300, 300);
+            await using var previewStream = await _processor.ProcessAsync<Stream,ThumbnailProcessor>(previewSourceStream, ct);
 
             var imgUrl = _storage.SaveAsync(originalStream, imgName, "images");
             var thumbUrl = _storage.SaveAsync(previewStream, thumbName, "previews");
