@@ -1,8 +1,10 @@
 using ImageServer.Database;
 using ImageServer.Services;
+using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 
 namespace ImageServer
 {
@@ -14,14 +16,33 @@ namespace ImageServer
         public static void Main()
         {
             var builder = WebApplication.CreateBuilder();
+
+            var configPath = "configuration.json";
+
+            if (!File.Exists(configPath))
+            {
+                var defaultConfiguration = new
+                {
+                    ConnectionStrings = new
+                    {
+                        DBConnection = "Host=localhost;Port=5432;Database=ImageServerDB;Username=postgres;Password=postgres"
+                    }
+                };
+                var configJson = JsonSerializer.Serialize(defaultConfiguration);
+                File.WriteAllText(configPath, configJson);
+            }
+
+            builder.Configuration.AddJsonFile("configuration.json", true, true);
+
             builder.WebHost.ConfigureKestrel(options =>
             {
                 options.Limits.MaxRequestBodySize = 100_000_000;
             });
+
             builder.Services.AddSingleton(strategy => new ThumbnailProcessor(300, 300));
             builder.Services.AddSingleton<IImageProcessor, ImageProcessor>();
             builder.Services.AddSingleton<IStorage>(storage => new LocalRepository(uploadPath));
-            builder.Services.AddDbContext<AppDBContext>();
+            builder.Services.AddDbContext<AppDBContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("DBConnection")));
             builder.Services.AddScoped<ImageService>();
 
             var app = builder.Build();
@@ -54,3 +75,4 @@ namespace ImageServer
 
     }
 }
+    
