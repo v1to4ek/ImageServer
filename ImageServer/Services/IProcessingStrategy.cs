@@ -1,7 +1,7 @@
 ﻿namespace ImageServer.Services
 {
-    public interface IProcessingStrategy<TResult>
+    public interface IProcessingStrategy<TResult, TInput>
     {
-        public Task<TResult> ProcessAsync(Stream stream, CancellationToken cancellationToken = default);
+        public Task<TResult> ProcessAsync(TInput input, CancellationToken cancellationToken = default);
     }
 }

@@ -46,6 +46,9 @@ namespace ImageServer.Services
 
         private async Task<ImageModel> ProcessAsync(IFormFile image, CancellationToken ct)
         {
+            var isValid = await _processor.ProcessAsync<ExtentionValidationProcessor, bool, string>(image.Name, ct);
+            if (!isValid) throw new InvalidOperationException($"Недопустимый формат файла: {Path.GetExtension(image.FileName)}");
+
             var extension = Path.GetExtension(image.FileName).ToLower();
             var id = Guid.NewGuid();
             var imgName = $"{id}{extension}";
@@ -58,7 +61,7 @@ namespace ImageServer.Services
             previewSourceStream.Position = 0;
             originalStream.Position = 0;
 
-            await using var previewStream = await _processor.ProcessAsync<Stream,ThumbnailProcessor>(previewSourceStream, ct);
+            await using var previewStream = await _processor.ProcessAsync<ThumbnailProcessor, Stream, Stream>(previewSourceStream, ct);
 
             var imgUrl = _storage.SaveAsync(originalStream, imgName, "images");
             var thumbUrl = _storage.SaveAsync(previewStream, thumbName, "previews");

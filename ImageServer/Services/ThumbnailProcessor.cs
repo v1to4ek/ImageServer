@@ -4,7 +4,12 @@ using SixLabors.ImageSharp.Processing;
 
 namespace ImageServer.Services
 {
-    public class ThumbnailProcessor : IProcessingStrategy<Stream>
+    /// <summary>
+    /// Стратегия генерации превью(сжатой версии) входного изображения.
+    /// Создаёт новый Stream, готовый к записи, на выходе.
+    /// Предполагает использовние Stream в качестве TResult и TInput внутри метода ProcessAsync интерфейса IImageProcessor.
+    /// </summary>
+    public class ThumbnailProcessor : IProcessingStrategy<Stream, Stream>
     {
         private readonly int _width;
 
