@@ -40,6 +40,7 @@ namespace ImageServer
             });
 
             builder.Services.AddSingleton(strategy => new ThumbnailProcessor(300, 300));
+            builder.Services.AddSingleton<ExtentionValidationProcessor>();
             builder.Services.AddSingleton<IImageProcessor, ImageProcessor>();
             builder.Services.AddSingleton<IStorage>(storage => new LocalRepository(uploadPath));
             builder.Services.AddDbContext<AppDBContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("DBConnection")));

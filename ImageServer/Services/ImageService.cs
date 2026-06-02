@@ -46,7 +46,7 @@ namespace ImageServer.Services
 
         private async Task<ImageModel> ProcessAsync(IFormFile image, CancellationToken ct)
         {
-            var isValid = await _processor.ProcessAsync<ExtentionValidationProcessor, bool, string>(image.Name, ct);
+            var isValid = await _processor.ProcessAsync<ExtentionValidationProcessor, bool, string>(image.FileName, ct);
             if (!isValid) throw new InvalidOperationException($"Недопустимый формат файла: {Path.GetExtension(image.FileName)}");
 
             var extension = Path.GetExtension(image.FileName).ToLower();
