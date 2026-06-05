@@ -22,9 +22,11 @@ namespace ImageServer.Services
         }
 
         //загрузка картинок
-        public async Task<int> SaveImagesAsync(IFormFileCollection images)
+        public async Task<ServiceResult<SavedResult>> SaveImagesAsync(IFormFileCollection images)
         {
-            var resultModels = new ConcurrentBag<ImageModel>();
+            var successful = new ConcurrentBag<ImageModel>();
+
+            var failed = new ConcurrentBag<string>();
 
             await Parallel.ForEachAsync(images,
                 new ParallelOptions 
@@ -33,54 +35,79 @@ namespace ImageServer.Services
                 },
                 async (image,ct) =>
                 {
-                    var imageModel = await ProcessAsync(image,ct);
-                    resultModels.Add(imageModel);
+                    try
+                    {
+                        var imageModel = await ProcessAsync(image, ct);
+                        successful.Add(imageModel);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        failed.Add($"{image.Name}: {ex.Message}");
+                    }
+
                 });
 
-            await _DBcontext.AddRangeAsync(resultModels);
+            if(!successful.IsEmpty)
+            {
+                await _DBcontext.AddRangeAsync(successful);
 
-            await _DBcontext.SaveChangesAsync();
+                await _DBcontext.SaveChangesAsync();
+            }
 
-            return resultModels.Count;
+            var savedResult = new SavedResult(
+                successful.Count,
+                failed.ToList());
+
+            return ServiceResult<SavedResult>.Ok(savedResult);
         }
 
         private async Task<ImageModel> ProcessAsync(IFormFile image, CancellationToken ct)
         {
             var isValid = await _processor.ProcessAsync<ExtentionValidationProcessor, bool, string>(image.FileName, ct);
+
             if (!isValid) throw new InvalidOperationException($"Недопустимый формат файла: {Path.GetExtension(image.FileName)}");
 
-            var extension = Path.GetExtension(image.FileName).ToLower();
             var id = Guid.NewGuid();
-            var imgName = $"{id}{extension}";
+            var imgName = $"{id}.webp";
             var thumbName = $"{id}.webp";
 
-            await using var originalStream = image.OpenReadStream();
-            await using var previewSourceStream = new MemoryStream();
-            await originalStream.CopyToAsync(previewSourceStream, ct);
+            await using var sourceStream = new MemoryStream();
 
-            previewSourceStream.Position = 0;
-            originalStream.Position = 0;
+            await image.CopyToAsync(sourceStream, ct);
 
-            await using var previewStream = await _processor.ProcessAsync<ThumbnailProcessor, Stream, Stream>(previewSourceStream, ct);
+            sourceStream.Position = 0;
 
-            var imgUrl = _storage.SaveAsync(originalStream, imgName, "images");
+            await using var imageStream = await _processor.ProcessAsync<ImageConversionProcessor, Stream, Stream>(sourceStream, ct);
+
+            sourceStream.Position = 0;
+
+            await using var previewStream = await _processor.ProcessAsync<PreviewConversionProcessor, Stream, Stream>(sourceStream, ct);
+
+            var imgUrl = _storage.SaveAsync(imageStream, imgName, "images");
             var thumbUrl = _storage.SaveAsync(previewStream, thumbName, "previews");
 
             await Task.WhenAll(imgUrl, thumbUrl);
 
-            return new ImageModel(id , await imgUrl, await thumbUrl);
+            return new ImageModel(id ,  imgUrl.Result,  thumbUrl.Result);
         }
 
         //получние полноценной картинки
-        public Stream GetImage(string id) 
+        public ServiceResult<Stream> GetImage(string id) 
         {
-            var imgStream = _storage.GetFile(id, "images");
+            try
+            {
+                var imgStream = _storage.GetFile(id, "images");
 
-            return imgStream;
+                return ServiceResult<Stream>.Ok(imgStream);
+            }
+            catch(FileNotFoundException ex)
+            {
+                return ServiceResult<Stream>.Fail(ex.Message);
+            }
         }
 
         //получение страницы превью
-        public async Task<PagedResponse<ImageDTO>> GetPagedResultAsync(PagedRequest request)
+        public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetPagedResultAsync(PagedRequest request)
         {
             var imgQuery = _DBcontext.Images
                 .AsNoTracking()
@@ -91,28 +118,41 @@ namespace ImageServer.Services
             var itemsToTake = await imgQuery
                 .Skip((request.PageNumber - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .Select(img => new ImageDTO(img.ImageUrl,img.PreviewUrl))
+                .Select(img => new ImageDTO(img.ImageUrl, img.PreviewUrl))
                 .ToListAsync();
 
-            return new PagedResponse<ImageDTO>(
+            var response = new PagedResponse<ImageDTO>(
                 itemsToTake,
                 totalCount,
                 request.PageNumber,
                 request.PageSize);
+
+            return ServiceResult<PagedResponse<ImageDTO>>.Ok(response);
         }
 
         //удаление картинки
-        public async Task DeleteAsync(string id)
+        public async Task<ServiceResult<bool>> DeleteAsync(string id)
         {
-            var image = await _DBcontext.Images.FindAsync(id) ?? throw new Exception("Сущность не найдена");
+            try
+            {
+                var guid = Guid.Parse(id);
 
-            _DBcontext.Images.Remove(image);
+                var image = await _DBcontext.Images.FindAsync(guid) ?? throw new Exception("Сущность не найдена");
 
-            await _DBcontext.SaveChangesAsync();
+                _DBcontext.Images.Remove(image);
 
-            _storage.DeleteFile(id, "images");
+                await _DBcontext.SaveChangesAsync();
 
-            _storage.DeleteFile(id, "previews");
+                _storage.DeleteFile(id, "images");
+
+                _storage.DeleteFile(id, "previews");
+
+                return ServiceResult<bool>.Ok(true);
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<bool>.Fail(ex.Message);
+            }
         }
     }
 }

@@ -39,7 +39,10 @@ namespace ImageServer
                 options.Limits.MaxRequestBodySize = 100_000_000;
             });
 
-            builder.Services.AddSingleton(strategy => new ThumbnailProcessor(300, 300));
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen();
+            builder.Services.AddSingleton(strategy => new ImageConversionProcessor());
+            builder.Services.AddSingleton(strategy => new PreviewConversionProcessor(300, 300));
             builder.Services.AddSingleton<ExtentionValidationProcessor>();
             builder.Services.AddSingleton<IImageProcessor, ImageProcessor>();
             builder.Services.AddSingleton<IStorage>(storage => new LocalRepository(uploadPath));
@@ -47,6 +50,8 @@ namespace ImageServer
             builder.Services.AddScoped<ImageService>();
 
             var app = builder.Build();
+            app.UseSwagger();
+            app.UseSwaggerUI();
             app.UseHttpsRedirection();
             app.UseStaticFiles();
             app.AddApplicationEndpoints();

@@ -9,13 +9,13 @@ namespace ImageServer.Services
     /// Создаёт новый Stream, готовый к записи, на выходе.
     /// Предполагает использовние Stream в качестве TResult и TInput внутри метода ProcessAsync интерфейса IImageProcessor.
     /// </summary>
-    public class ThumbnailProcessor : IProcessingStrategy<Stream, Stream>
+    public class PreviewConversionProcessor : IProcessingStrategy<Stream, Stream>
     {
         private readonly int _width;
 
         private readonly int _height;
 
-        public ThumbnailProcessor(int width, int height)
+        public PreviewConversionProcessor(int width, int height)
         { 
             _width = width;
             _height = height;

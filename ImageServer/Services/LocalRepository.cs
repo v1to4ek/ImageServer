@@ -28,7 +28,7 @@
 
         public Stream GetFile(string fileName, string relativePath)
         {
-            var filePath = Path.Combine(_storagePath, relativePath, fileName);
+            var filePath = $"{Path.Combine(_storagePath, relativePath, fileName)}.webp";
 
             if (!File.Exists(filePath)) throw new FileNotFoundException();
 
@@ -39,7 +39,7 @@
 
         public void DeleteFile(string fileName, string relativePath)
         {
-            var filePath = Path.Combine(_storagePath, relativePath, fileName);
+            var filePath = $"{Path.Combine(_storagePath, relativePath, fileName)}.webp";
 
             if (!File.Exists(filePath)) throw new FileNotFoundException();
 
