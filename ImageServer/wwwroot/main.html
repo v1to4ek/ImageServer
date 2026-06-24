@@ -1,0 +1,186 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Хранилище изображений</title>
+    <link rel="stylesheet" href="main-style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+</head>
+    <body>
+        <script src="/_framework/aspnetcore-browser-refresh.js"></script>
+        <div class="header-controls">
+
+            <form>
+                <label class="control-btn-style" id="leftbtn">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </label>
+            </form>
+
+            <form enctype="multipart/form-data" method="post">
+
+                <input type="file" id="fileSelector" multiple hidden />
+
+                <label for="fileSelector" class="btn-style">
+                    <i class="fa-solid fa-upload"></i>
+                </label>
+
+            </form>
+
+            <form>
+                <label class="btn-style">
+                    <i class="fa-solid fa-download"></i>
+                </label>
+            </form>
+
+            <form>
+                <label class="btn-style">
+                    <i class="fa-solid fa-trash-can"></i>
+                </label>
+            </form>
+
+            <form class="right-btn-pos-style">
+                <label class="control-btn-style" id="rightbtn">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </label>
+            </form>
+
+        </div>
+
+        <div class="images-body">
+            <div id="imgArea" class="images">
+
+            </div>
+        </div>
+
+        <div id="modal" class="modal hidden">
+            <div class="modal-content">
+                <h3 class="modal-text">Выбранные файлы</h3>
+
+                <div id="preview"></div>
+
+                <button id="confirmBtn" type="button" class="modal-btn">
+                    Подтвердить
+                </button>
+            </div>
+        </div>
+
+        <script>
+
+            const fileSelector = document.getElementById("fileSelector");
+            const modal = document.getElementById("modal");
+            const preview = document.getElementById("preview");
+            const confirmBtn = document.getElementById("confirmBtn");
+            const imageContainer = document.getElementById("imgArea");
+            const leftPageControl = document.getElementById("leftbtn");
+            const rightPageControl = document.getElementById("rightbtn");
+
+            //временно задаём параметры для пагинации вручную
+            var pageNumber = 1;
+            var pageSize = 24;
+
+            loadPageData()
+
+            leftPageControl.addEventListener("click", function () {
+
+                if (pageNumber > 1) pageNumber--;
+
+                loadPageData()
+            });
+
+            rightPageControl.addEventListener("click", function () {
+
+                pageNumber++;
+
+                loadPageData()
+            });
+
+            //отображение картинок 
+            function loadPageData() {
+                const params = new URLSearchParams({
+                    pageNumber: pageNumber.toString(),
+                    pageSize: pageSize.toString()
+                });
+
+                fetch(`/images?${params}`)
+                    .then(r => r.json())
+                    .then(page => {
+
+                        imageContainer.innerHTML = "";
+
+                        page.items.forEach(img => {
+                            const el = document.createElement("img");
+
+                            el.src = img.previewUrl;
+
+                            el.onclick = () => {
+                                window.open(img.imageUrl, "_blank");
+                            };
+
+                            imageContainer.appendChild(el);
+                        });
+                    });
+            }
+
+            // генерация превью
+            fileSelector.addEventListener("change", function () {
+
+                preview.innerHTML = "";
+
+                const files = Array.from(fileSelector.files);
+
+                files.forEach(file => {
+                    const reader = new FileReader();
+
+                    reader.onload = function (e) {
+                        const img = document.createElement("img");
+                        img.src = e.target.result;
+                        preview.appendChild(img);
+                    };
+
+                    reader.readAsDataURL(file);
+                });
+
+                modal.classList.remove("hidden");
+            });
+
+            // отправка на бэк
+            confirmBtn.addEventListener("click", async function () {
+
+                const files = fileSelector.files;
+
+                if (files.length === 0) return;
+
+                const formData = new FormData();
+
+                for (let i = 0; i < files.length; i++) {
+                    formData.append("files", files[i]);
+                }
+
+                try {
+                    const response = await fetch("/upload", {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    const text = await response.text();
+
+
+                    if (response.ok) {
+                        alert(text);
+                        loadPageData();
+                    } else {
+                        alert("Ошибка");
+                    }
+
+                } catch (err) {
+                    alert("Ошибка соединения с сервером");
+                    console.error(err);
+                }
+
+                modal.classList.add("hidden");
+            });
+
+        </script>
+    </body>
+</html>
