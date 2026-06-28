@@ -369,3 +369,4 @@ FodyWeavers.xsd
 /ImageServer/wwwroot/main-style.css
 /ImageServer/wwwroot/not-found.html
 /ImageServer/wwwroot/not-found-style.css
+/ImageServer/appsettings.Development.json
