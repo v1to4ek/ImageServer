@@ -1,6 +1,4 @@
 ﻿namespace ImageServer.DTOs
 {
-    public record PagedRequest(
-        int PageNumber,
-        int PageSize);
+    public record PagedRequest( int PageNumber, int PageSize);
 }

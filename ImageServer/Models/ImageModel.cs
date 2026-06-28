@@ -16,7 +16,7 @@
         {
             Id = id;
             CreatedAt = DateTime.UtcNow;
-            Name = id.ToString();
+            Name = $"img {DateTime.Now}";
             IsFavourite = isFavourite;
         }
 

@@ -1,4 +1,5 @@
 using ImageServer.Abstractions;
+using ImageServer.Configuration;
 using ImageServer.Database;
 using ImageServer.Services;
 using ImageServer.Services.Processors;
@@ -6,48 +7,34 @@ using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using System.Net;
 using System.Net.Sockets;
-using System.Text.Json;
 
 namespace ImageServer
 {
     public class Program
     {
-        static readonly string uploadPath = Path.Combine(Directory.GetCurrentDirectory(),"wwwroot");
-
         public static void Main()
         {
             var builder = WebApplication.CreateBuilder();
 
-            var configPath = "configuration.json";
+            builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 100_000_000);
 
-            if (!File.Exists(configPath))
-            {
-                var defaultConfiguration = new
-                {
-                    ConnectionStrings = new
-                    {
-                        DBConnection = "Host=localhost;Port=5432;Database=ImageServerDB;Username=postgres;Password=postgres"
-                    }
-                };
-                var configJson = JsonSerializer.Serialize(defaultConfiguration);
-                File.WriteAllText(configPath, configJson);
-            }
-
-            builder.Configuration.AddJsonFile("configuration.json", true, true);
-
-            builder.WebHost.ConfigureKestrel(options =>
-            {
-                options.Limits.MaxRequestBodySize = 100_000_000;
-            });
+            builder.AddConfigOption<StorageOptions>();
+            builder.AddConfigOption<DatabaseOptions>();
+            builder.AddConfigOption<ImgServiceOptions>();
 
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
-            builder.Services.AddSingleton(strategy => new ImageConversionProcessor());
-            builder.Services.AddSingleton(strategy => new PreviewConversionProcessor(300, 300));
-            builder.Services.AddSingleton<ExtentionValidationProcessor>();
+
             builder.Services.AddSingleton<IImageProcessor, ImageProcessor>();
-            builder.Services.AddSingleton<IStorage>(storage => new LocalRepository(uploadPath));
-            builder.Services.AddDbContext<AppDBContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("DBConnection")));
+            builder.Services.AddSingleton(serviceProvider => new ImageConversionProcessor());
+            builder.Services.AddSingleton(serviceProvider => new PreviewConversionProcessor(300, 300));
+            builder.Services.AddSingleton<ExtentionValidationProcessor>();
+
+            builder.Services.AddSingleton<IStorage, LocalRepository>();
+
+            var DbOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>();
+            builder.Services.AddDbContext<AppDBContext>(options => options.UseNpgsql(DbOptions!.ConnectionString));
+
             builder.Services.AddScoped<ImageService>();
 
             var app = builder.Build();

@@ -1,9 +1,11 @@
 ﻿using ImageServer.Abstractions;
+using ImageServer.Configuration;
 using ImageServer.Database;
 using ImageServer.DTOs;
 using ImageServer.Models;
 using ImageServer.Services.Processors;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 
 namespace ImageServer.Services
@@ -16,13 +18,25 @@ namespace ImageServer.Services
 
         private readonly IStorage _storage;
 
-        public ImageService(AppDBContext DBcontext, IImageProcessor processor, IStorage storage)
+        private readonly ImgServiceOptions _serviceOptions;
+
+        private readonly string _imagesDirectoryName;
+
+        private readonly string _previewsDirectoryName;
+
+        public ImageService(AppDBContext DBcontext, IImageProcessor processor, IStorage storage, IOptions<ImgServiceOptions> serviceOptions, IOptions<StorageOptions> storageOptions)
         {
             _DBcontext = DBcontext;
 
             _processor = processor;
 
             _storage = storage;
+
+            _serviceOptions = serviceOptions.Value;
+
+            _imagesDirectoryName = storageOptions.Value.ImagesDirectoryName;
+
+            _previewsDirectoryName = storageOptions.Value.PreviewsDirectoryName;
         }
 
         public async Task<ServiceResult<SavedResult>> SaveImagesAsync(IFormFileCollection images)
@@ -32,15 +46,18 @@ namespace ImageServer.Services
             var failed = new ConcurrentBag<string>();
 
             await Parallel.ForEachAsync(images,
+
                 new ParallelOptions 
                 { 
-                    MaxDegreeOfParallelism = 4 
+                    MaxDegreeOfParallelism = _serviceOptions.ParallelismDegree 
                 },
+
                 async (image,ct) =>
                 {
                     try
                     {
                         var imageModel = await ProcessAsync(image, ct);
+
                         successful.Add(imageModel);
                     }
                     catch (InvalidOperationException ex)
@@ -86,9 +103,9 @@ namespace ImageServer.Services
 
             await using var previewStream = await _processor.ProcessAsync<PreviewConversionProcessor, Stream, Stream>(sourceStream, ct);
 
-            var imageSavingTask = _storage.SaveAsync(imageStream, imgName, "images");
+            var imageSavingTask = _storage.SaveAsync(imageStream, imgName, _imagesDirectoryName);
 
-            var previewSavingTask = _storage.SaveAsync(previewStream, thumbName, "previews");
+            var previewSavingTask = _storage.SaveAsync(previewStream, thumbName, _previewsDirectoryName);
 
             await Task.WhenAll(imageSavingTask, previewSavingTask);
 
@@ -99,7 +116,7 @@ namespace ImageServer.Services
         {
             try
             {
-                var imgStream = _storage.GetFile(id, "images");
+                var imgStream = _storage.GetFile(id, _imagesDirectoryName);
 
                 return ServiceResult<Stream>.Ok(imgStream);
             }
@@ -120,7 +137,7 @@ namespace ImageServer.Services
             var itemsToTake = await imgQuery
                 .Skip((request.PageNumber - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .Select(img => new ImageDTO(img.Id.ToString(), "images", "previews"))
+                .Select(img => new ImageDTO(img.Id.ToString(), _imagesDirectoryName, _previewsDirectoryName))
                 .ToListAsync();
 
             var response = new PagedResponse<ImageDTO>(
@@ -144,9 +161,9 @@ namespace ImageServer.Services
 
                 await _DBcontext.SaveChangesAsync();
 
-                _storage.DeleteFile(id, "images");
+                _storage.DeleteFile(id, _imagesDirectoryName);
 
-                _storage.DeleteFile(id, "previews");
+                _storage.DeleteFile(id, _previewsDirectoryName);
 
                 return ServiceResult.Ok();
             }

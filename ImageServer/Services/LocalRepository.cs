@@ -1,4 +1,6 @@
 ﻿using ImageServer.Abstractions;
+using ImageServer.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace ImageServer.Services
 {
@@ -6,9 +8,17 @@ namespace ImageServer.Services
     {
         private readonly string _storagePath;
 
+        /// <summary>
+        /// Конструктор для ручной передачи строки хранилища
+        /// </summary>
         public LocalRepository(string storagePath)
         {
             _storagePath = storagePath;
+        }
+
+        public LocalRepository(IOptions<StorageOptions> options)
+        {
+            _storagePath = options.Value.MainPath;
         }
 
         public async Task SaveAsync(Stream stream, string fileId, string relativePath)
