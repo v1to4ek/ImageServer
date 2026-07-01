@@ -2,11 +2,13 @@
 using ImageServer.Configuration;
 using ImageServer.Database;
 using ImageServer.DTOs;
+using ImageServer.Enums;
 using ImageServer.Models;
 using ImageServer.Services.Processors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
 
 namespace ImageServer.Services
 {
@@ -24,6 +26,13 @@ namespace ImageServer.Services
 
         private readonly string _previewsDirectoryName;
 
+        private static readonly Dictionary<OrderingSelectors, Func<IQueryable<ImageModel>, bool, IOrderedQueryable<ImageModel>>> _orderingSelectors = new()
+        {
+            [OrderingSelectors.Date] = Sort(model => model.CreatedAt),
+            [OrderingSelectors.Name] = Sort(model => model.Name),
+            [OrderingSelectors.Favourite] = Sort(model => model.IsFavourite)
+        };
+
         public ImageService(AppDBContext DBcontext, IImageProcessor processor, IStorage storage, IOptions<ImgServiceOptions> serviceOptions, IOptions<StorageOptions> storageOptions)
         {
             _DBcontext = DBcontext;
@@ -38,6 +47,12 @@ namespace ImageServer.Services
 
             _previewsDirectoryName = storageOptions.Value.PreviewsDirectoryName;
         }
+
+        private static Func<IQueryable<ImageModel>, bool, IOrderedQueryable<ImageModel>> Sort<TSelectorField>(
+            Expression<Func<ImageModel, TSelectorField>> selector) =>
+            (query, ascending) => ascending
+            ? query.OrderBy(selector)
+            : query.OrderByDescending(selector);
 
         public async Task<ServiceResult<SavedResult>> SaveImagesAsync(IFormFileCollection images)
         {
@@ -128,16 +143,27 @@ namespace ImageServer.Services
 
         public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetPagedResultAsync(PagedRequest request)
         {
-            var imgQuery = _DBcontext.Images
-                .AsNoTracking()
-                .OrderByDescending(img => img.CreatedAt);
+            var imgQuery = _DBcontext.Images.AsNoTracking();
+            
+            var isAscending = request.OrderingType == OrderingTypes.Ascending;
+
+            var orderingSelector = request.OrderingSelector;
+
+            var orderedQuery = _orderingSelectors[orderingSelector](imgQuery, isAscending);
 
             var totalCount = await imgQuery.CountAsync();
 
-            var itemsToTake = await imgQuery
+            var itemsToTake = await orderedQuery
                 .Skip((request.PageNumber - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .Select(img => new ImageDTO(img.Id.ToString(), _imagesDirectoryName, _previewsDirectoryName))
+                .Select(img =>
+                new ImageDTO(
+                    img.Id.ToString(), 
+                    _imagesDirectoryName, 
+                    _previewsDirectoryName,
+                    img.Name, 
+                    img.IsFavourite,
+                    img.CreatedAt))
                 .ToListAsync();
 
             var response = new PagedResponse<ImageDTO>(

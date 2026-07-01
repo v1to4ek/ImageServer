@@ -99,7 +99,9 @@
             function loadPageData() {
                 const params = new URLSearchParams({
                     pageNumber: pageNumber.toString(),
-                    pageSize: pageSize.toString()
+                    pageSize: pageSize.toString(),
+                    orderingType = 0,
+                    orderingSelector = 0
                 });
 
                 fetch(`/images?${params}`)

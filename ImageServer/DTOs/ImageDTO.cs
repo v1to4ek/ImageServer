@@ -2,15 +2,31 @@
 {
     public record ImageDTO
     {
+        public string Id { get; set; }
+
         public string ImageUrl { get; set; }
 
         public string PreviewUrl { get; set; }
 
-        public ImageDTO(string Id, string ImageDirectory, string PreviewDirectory)
-        {
-            ImageUrl = Path.Combine(ImageDirectory, Id).Replace("\\", "/");
+        public string Name { get; set; }
 
-            PreviewUrl = Path.Combine(PreviewDirectory, Id).Replace("\\", "/");
+        public bool Favorite { get; set; }
+
+        public DateTime Date { get; set; }
+
+        public ImageDTO(string id, string imageDirectory, string previewDirectory, string name, bool favourite, DateTime date)
+        {
+            Id = id;
+
+            ImageUrl = Path.Combine(imageDirectory, id).Replace("\\", "/");
+
+            PreviewUrl = Path.Combine(previewDirectory, id).Replace("\\", "/");
+
+            Name = name;
+
+            Date = date;
+
+            Favorite = favourite;
         }
 
     }
