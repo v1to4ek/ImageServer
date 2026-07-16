@@ -77,7 +77,7 @@ namespace ImageServer.Services
 
                         successful.Add(imageModel);
                     }
-                    catch (InvalidOperationException ex)
+                    catch (Exception ex)
                     {
                         failed.Add($"{image.Name}: {ex.Message}");
                     }
@@ -150,7 +150,18 @@ namespace ImageServer.Services
 
             var orderingSelector = request.OrderingSelector;
 
-            var orderedQuery = _orderingSelectors[orderingSelector](imgQuery, isAscending);
+            ImageModelFilterDelegate filterDelegate = null!;
+
+            if (_orderingSelectors.TryGetValue(orderingSelector, out var resultDelegate))
+            {
+                filterDelegate = resultDelegate;
+            }
+            else
+            {
+                filterDelegate = _orderingSelectors[0];
+            }
+
+            var orderedQuery = filterDelegate(imgQuery, isAscending);
 
             var totalCount = await imgQuery.CountAsync();
 
