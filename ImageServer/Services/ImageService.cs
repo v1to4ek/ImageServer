@@ -26,7 +26,9 @@ namespace ImageServer.Services
 
         private readonly string _previewsDirectoryName;
 
-        private static readonly Dictionary<OrderingSelectors, Func<IQueryable<ImageModel>, bool, IOrderedQueryable<ImageModel>>> _orderingSelectors = new()
+        private delegate IOrderedQueryable<ImageModel> ImageModelFilter(IQueryable<ImageModel> query, bool ascending);
+
+        private static readonly Dictionary<OrderingSelectors, ImageModelFilter> _orderingSelectors = new()
         {
             [OrderingSelectors.Date] = Sort(model => model.CreatedAt),
             [OrderingSelectors.Name] = Sort(model => model.Name),
@@ -48,8 +50,8 @@ namespace ImageServer.Services
             _previewsDirectoryName = storageOptions.Value.PreviewsDirectoryName;
         }
 
-        private static Func<IQueryable<ImageModel>, bool, IOrderedQueryable<ImageModel>> Sort<TSelectorField>(
-            Expression<Func<ImageModel, TSelectorField>> selector) =>
+        private static ImageModelFilter Sort<TSelectorField>
+            (Expression<Func<ImageModel, TSelectorField>> selector) =>
             (query, ascending) => ascending
             ? query.OrderBy(selector)
             : query.OrderByDescending(selector);
@@ -79,7 +81,6 @@ namespace ImageServer.Services
                     {
                         failed.Add($"{image.Name}: {ex.Message}");
                     }
-
                 });
 
             if(!successful.IsEmpty)
