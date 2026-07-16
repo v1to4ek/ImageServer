@@ -38,6 +38,16 @@ namespace ImageServer
             builder.Services.AddScoped<ImageService>();
 
             var app = builder.Build();
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var serviceProvider = scope.ServiceProvider;
+
+                var DBContext = serviceProvider.GetRequiredService<AppDBContext>();
+
+                if (!DBContext.Database.CanConnect()) throw new Exception("БД недоступна при старте");
+            }
+
             app.UseSwagger();
             app.UseSwaggerUI();
             app.UseHttpsRedirection();

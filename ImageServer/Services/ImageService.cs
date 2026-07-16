@@ -26,13 +26,13 @@ namespace ImageServer.Services
 
         private readonly string _previewsDirectoryName;
 
-        private delegate IOrderedQueryable<ImageModel> ImageModelFilter(IQueryable<ImageModel> query, bool ascending);
+        private delegate IOrderedQueryable<ImageModel> ImageModelFilterDelegate(IQueryable<ImageModel> query, bool ascending);
 
-        private static readonly Dictionary<OrderingSelectors, ImageModelFilter> _orderingSelectors = new()
+        private static readonly Dictionary<OrderingSelectors, ImageModelFilterDelegate> _orderingSelectors = new()
         {
-            [OrderingSelectors.Date] = Sort(model => model.CreatedAt),
-            [OrderingSelectors.Name] = Sort(model => model.Name),
-            [OrderingSelectors.Favourite] = Sort(model => model.IsFavourite)
+            [OrderingSelectors.Date] = CreateFilter(model => model.CreatedAt),
+            [OrderingSelectors.Name] = CreateFilter(model => model.Name),
+            [OrderingSelectors.Favourite] = CreateFilter(model => model.IsFavourite)
         };
 
         public ImageService(AppDBContext DBcontext, IImageProcessor processor, IStorage storage, IOptions<ImgServiceOptions> serviceOptions, IOptions<StorageOptions> storageOptions)
@@ -50,7 +50,7 @@ namespace ImageServer.Services
             _previewsDirectoryName = storageOptions.Value.PreviewsDirectoryName;
         }
 
-        private static ImageModelFilter Sort<TSelectorField>
+        private static ImageModelFilterDelegate CreateFilter<TSelectorField>
             (Expression<Func<ImageModel, TSelectorField>> selector) =>
             (query, ascending) => ascending
             ? query.OrderBy(selector)
