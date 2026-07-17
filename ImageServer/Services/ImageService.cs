@@ -35,7 +35,12 @@ namespace ImageServer.Services
             [OrderingSelectors.Favourite] = CreateFilter(model => model.IsFavourite)
         };
 
-        public ImageService(AppDBContext DBcontext, IImageProcessor processor, IStorage storage, IOptions<ImgServiceOptions> serviceOptions, IOptions<StorageOptions> storageOptions)
+        public ImageService(AppDBContext DBcontext, 
+            IImageProcessor processor, 
+            IStorage storage, 
+            IOptions<ImgServiceOptions> serviceOptions, 
+            IOptions<StorageOptions> storageOptions,
+            IServiceProvider serviceProvider)
         {
             _DBcontext = DBcontext;
 
@@ -119,9 +124,9 @@ namespace ImageServer.Services
 
             await using var previewStream = await _processor.ProcessAsync<PreviewConversionProcessor, Stream, Stream>(sourceStream, ct);
 
-            var imageSavingTask = _storage.SaveAsync(imageStream, imgName, _imagesDirectoryName);
+            var imageSavingTask = _storage.SaveFileAsync(imageStream, imgName, _imagesDirectoryName);
 
-            var previewSavingTask = _storage.SaveAsync(previewStream, thumbName, _previewsDirectoryName);
+            var previewSavingTask = _storage.SaveFileAsync(previewStream, thumbName, _previewsDirectoryName);
 
             await Task.WhenAll(imageSavingTask, previewSavingTask);
 
@@ -142,7 +147,7 @@ namespace ImageServer.Services
             }
         }
 
-        public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetPagedResultAsync(PagedRequest request)
+        public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetPagedResultAsync(PagedRequest request, CancellationToken ct)
         {
             var imgQuery = _DBcontext.Images.AsNoTracking();
             
@@ -163,7 +168,7 @@ namespace ImageServer.Services
 
             var orderedQuery = filterDelegate(imgQuery, isAscending);
 
-            var totalCount = await imgQuery.CountAsync();
+            var totalCount = await imgQuery.CountAsync(ct);
 
             var itemsToTake = await orderedQuery
                 .Skip((request.PageNumber - 1) * request.PageSize)
@@ -176,10 +181,10 @@ namespace ImageServer.Services
                     img.Name, 
                     img.IsFavourite,
                     img.CreatedAt))
-                .ToListAsync();
+                .ToListAsync(ct);
 
-            var response = new PagedResponse<ImageDTO>(
-                itemsToTake,
+            var response = new PagedResponse<ImageDTO>
+                (itemsToTake,
                 totalCount,
                 request.PageNumber,
                 request.PageSize);
@@ -187,7 +192,7 @@ namespace ImageServer.Services
             return ServiceResult<PagedResponse<ImageDTO>>.Ok(response);
         }
 
-        public async Task<ServiceResult> DeleteAsync(string id)
+        public async Task<ServiceResult> DeleteAsync(string id, CancellationToken ct)
         {
             try
             {
@@ -211,17 +216,17 @@ namespace ImageServer.Services
             }
         }
 
-        public async Task<ServiceResult> UpdateAsync(string id, IImageUpdateCommand command)
+        public async Task<ServiceResult> UpdateAsync(string id, IImageUpdateCommand command, CancellationToken ct)
         {
             try
             {
                 var guid = Guid.Parse(id);
 
-                var image = await _DBcontext.Images.FindAsync(guid) ?? throw new Exception("Сущность не найдена");
+                var image = await _DBcontext.Images.FindAsync(guid, ct) ?? throw new Exception("Сущность не найдена");
 
                 command.Execute(image);
 
-                await _DBcontext.SaveChangesAsync();
+                await _DBcontext.SaveChangesAsync(ct);
 
                 return ServiceResult.Ok();
             }

@@ -2,7 +2,7 @@
 {
     public interface IStorage
     {
-        public Task SaveAsync(Stream stream, string fileName, string relativePath);
+        public Task SaveFileAsync(Stream stream, string fileName, string relativePath);
 
         public Stream GetFile(string fileName, string relativePath);
 

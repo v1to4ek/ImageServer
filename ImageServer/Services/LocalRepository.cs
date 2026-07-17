@@ -21,7 +21,7 @@ namespace ImageServer.Services
             _storagePath = options.Value.MainPath;
         }
 
-        public async Task SaveAsync(Stream stream, string fileId, string relativePath)
+        public async Task SaveFileAsync(Stream stream, string fileId, string relativePath)
         {
             var fullPath = Path.Combine(_storagePath, relativePath);
 

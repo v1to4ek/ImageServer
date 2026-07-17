@@ -8,5 +8,7 @@ namespace ImageServer.Database
         public AppDBContext(DbContextOptions options) : base(options) {}
 
         public DbSet<ImageModel> Images { get; set; } = null!;
+
+        public DbSet<FileToDeletionModel> FilesToDeletion { get; set; } = null!;
     }
 }
