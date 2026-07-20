@@ -9,9 +9,9 @@ namespace ImageServer
         public static void AddImageAPI(this WebApplication webApplication)
         {
 
-            webApplication.MapGet("/images", async (ImageService service,[AsParameters] PagedRequest request) =>
+            webApplication.MapGet("/images", async (ImageService service,[AsParameters] PagedRequest request, CancellationToken ct) =>
             {
-                var result = await service.GetPagedResultAsync(request);
+                var result = await service.GetPagedResultAsync(request, ct);
 
                 return Results.Ok(result.Data);
             });
@@ -25,35 +25,35 @@ namespace ImageServer
                 : Results.NotFound(result.Error);
             });
 
-            webApplication.MapPut("/images/{id}/favourite", async (ImageService service, string id, SetFavouriteCommand command) =>
+            webApplication.MapPut("/images/{id}/favourite", async (ImageService service, string id, SetFavouriteCommand command, CancellationToken ct) =>
             {
-                var result = await service.UpdateAsync(id, command);
+                var result = await service.UpdateAsync(id, command, ct);
 
                 return result.IsSuccess
                 ? Results.NoContent()
                 : Results.NotFound(result.Error);
             });
 
-            webApplication.MapPut("/images/{id}/rename", async (ImageService service, string id, RenameCommand command) =>
+            webApplication.MapPut("/images/{id}/rename", async (ImageService service, string id, RenameCommand command, CancellationToken ct) =>
             {
-                var result = await service.UpdateAsync(id, command);
+                var result = await service.UpdateAsync(id, command, ct);
 
                 return result.IsSuccess
                 ? Results.NoContent()
                 : Results.NotFound(result.Error);
             });
 
-            webApplication.MapPost("/images", async (ImageService service, IFormFileCollection formFiles) =>
+            webApplication.MapPost("/images", async (ImageService service, IFormFileCollection formFiles, CancellationToken ct) =>
             {
-                var result = await service.SaveImagesAsync(formFiles);
+                var result = await service.SaveImagesAsync(formFiles, ct);
 
                 return Results.Ok(result.Data!.SavedCount);
 
             }).DisableAntiforgery();
 
-            webApplication.MapDelete("/images/{id}", async (ImageService service, string id) =>
+            webApplication.MapDelete("/images/{id}", async (ImageService service, string id, CancellationToken ct) =>
             {
-                var result = await service.DeleteAsync(id);
+                var result = await service.DeleteAsync(id, ct);
 
                 return result.IsSuccess
                 ? Results.NoContent()

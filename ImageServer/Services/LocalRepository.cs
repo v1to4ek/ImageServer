@@ -21,7 +21,7 @@ namespace ImageServer.Services
             _storagePath = options.Value.MainPath;
         }
 
-        public async Task SaveFileAsync(Stream stream, string fileId, string relativePath)
+        public async Task SaveFileAsync(Stream stream, string fileId, string relativePath, CancellationToken ct = default)
         {
             var fullPath = Path.Combine(_storagePath, relativePath);
 
@@ -31,7 +31,7 @@ namespace ImageServer.Services
 
             await using var fileStream = new FileStream(filePath, FileMode.Create);
 
-            await stream.CopyToAsync(fileStream);
+            await stream.CopyToAsync(fileStream, ct);
         }
 
         public Stream GetFile(string fileId, string relativePath)

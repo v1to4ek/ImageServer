@@ -22,9 +22,11 @@ namespace ImageServer.Services
 
         private readonly ImgServiceOptions _serviceOptions;
 
-        private readonly string _imagesDirectoryName;
+        private readonly StorageOptions _storageOptions;
 
-        private readonly string _previewsDirectoryName;
+        private readonly string _imagesTrashRoot; 
+
+        private readonly string _previewsTrashRoot;
 
         private delegate IOrderedQueryable<ImageModel> ImageModelFilterDelegate(IQueryable<ImageModel> query, bool ascending);
 
@@ -39,8 +41,7 @@ namespace ImageServer.Services
             IImageProcessor processor, 
             IStorage storage, 
             IOptions<ImgServiceOptions> serviceOptions, 
-            IOptions<StorageOptions> storageOptions,
-            IServiceProvider serviceProvider)
+            IOptions<StorageOptions> storageOptions)
         {
             _DBcontext = DBcontext;
 
@@ -50,9 +51,11 @@ namespace ImageServer.Services
 
             _serviceOptions = serviceOptions.Value;
 
-            _imagesDirectoryName = storageOptions.Value.ImagesDirectoryName;
+            _storageOptions = storageOptions.Value;
 
-            _previewsDirectoryName = storageOptions.Value.PreviewsDirectoryName;
+            _imagesTrashRoot = Path.Combine(_storageOptions.MainPath, "ImagesTrash");
+
+            _previewsTrashRoot = Path.Combine(_storageOptions.MainPath, "PreviewsTrash");
         }
 
         private static ImageModelFilterDelegate CreateFilter<TSelectorField>
@@ -61,11 +64,13 @@ namespace ImageServer.Services
             ? query.OrderBy(selector)
             : query.OrderByDescending(selector);
 
-        public async Task<ServiceResult<SavedResult>> SaveImagesAsync(IFormFileCollection images)
+        public async Task<ServiceResult<SavedResult>> SaveImagesAsync(IFormFileCollection images, CancellationToken ct)
         {
             var successful = new ConcurrentBag<ImageModel>();
 
             var failed = new ConcurrentBag<string>();
+
+            var token = ct;
 
             await Parallel.ForEachAsync(images,
 
@@ -74,11 +79,11 @@ namespace ImageServer.Services
                     MaxDegreeOfParallelism = _serviceOptions.ParallelismDegree 
                 },
 
-                async (image,ct) =>
+                async (image,token) =>
                 {
                     try
                     {
-                        var imageModel = await ProcessAsync(image, ct);
+                        var imageModel = await ProcessAsync(image, token);
 
                         successful.Add(imageModel);
                     }
@@ -124,9 +129,9 @@ namespace ImageServer.Services
 
             await using var previewStream = await _processor.ProcessAsync<PreviewConversionProcessor, Stream, Stream>(sourceStream, ct);
 
-            var imageSavingTask = _storage.SaveFileAsync(imageStream, imgName, _imagesDirectoryName);
+            var imageSavingTask = _storage.SaveFileAsync(imageStream, imgName, _storageOptions.ImagesDirectoryName);
 
-            var previewSavingTask = _storage.SaveFileAsync(previewStream, thumbName, _previewsDirectoryName);
+            var previewSavingTask = _storage.SaveFileAsync(previewStream, thumbName, _storageOptions.PreviewsDirectoryName);
 
             await Task.WhenAll(imageSavingTask, previewSavingTask);
 
@@ -135,16 +140,15 @@ namespace ImageServer.Services
 
         public ServiceResult<Stream> GetImage(string id) 
         {
-            try
-            {
-                var imgStream = _storage.GetFile(id, _imagesDirectoryName);
+            Stream imageStream;
 
-                return ServiceResult<Stream>.Ok(imgStream);
-            }
-            catch(FileNotFoundException ex)
+            if(_storage.TryGetFile(id,_storageOptions.ImagesDirectoryName, out var imgStream))
             {
-                return ServiceResult<Stream>.Fail(ex.Message);
+                imageStream = imgStream!;
             }
+            else return ServiceResult<Stream>.Fail($"Изображение с id:{id} не найдено");
+
+            return ServiceResult<Stream>.Ok(imageStream);
         }
 
         public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetPagedResultAsync(PagedRequest request, CancellationToken ct)
@@ -176,8 +180,8 @@ namespace ImageServer.Services
                 .Select(img =>
                 new ImageDTO(
                     img.Id.ToString(), 
-                    _imagesDirectoryName, 
-                    _previewsDirectoryName,
+                    _storageOptions.ImagesDirectoryName, 
+                    _storageOptions.PreviewsDirectoryName,
                     img.Name, 
                     img.IsFavourite,
                     img.CreatedAt))
@@ -194,25 +198,87 @@ namespace ImageServer.Services
 
         public async Task<ServiceResult> DeleteAsync(string id, CancellationToken ct)
         {
+            Guid guid;
+
+            if (Guid.TryParse(id, out var parsedId)) guid = parsedId;
+            else return ServiceResult.Fail("Неверный формат ID");
+
+            #region Удаление из базы данных(в памяти)
+
             try
             {
-                var guid = Guid.Parse(id);
-
-                var image = await _DBcontext.Images.FindAsync(guid) ?? throw new Exception("Сущность не найдена");
+                var image = await _DBcontext.Images.FindAsync(guid, ct)
+                   ?? throw new InvalidOperationException($"Изображение с id:{id} не найдено.");
 
                 _DBcontext.Images.Remove(image);
-
-                await _DBcontext.SaveChangesAsync();
-
-                _storage.DeleteFile(id, _imagesDirectoryName);
-
-                _storage.DeleteFile(id, _previewsDirectoryName);
-
-                return ServiceResult.Ok();
             }
             catch (Exception ex)
             {
                 return ServiceResult.Fail(ex.Message);
+            }
+
+            #endregion
+
+            #region Перемещение файлов в корзину 
+
+            var imageTrashedSuccess = await _storage.TryMoveFile(id, _storageOptions.ImagesDirectoryName, _imagesTrashRoot, ct); 
+            var previewTrashedSuccess = await _storage.TryMoveFile(id, _storageOptions.PreviewsDirectoryName, _previewsTrashRoot, ct);
+
+            bool fault = false;
+
+            if (!imageTrashedSuccess)
+            {
+                fault = true;
+                if (previewTrashedSuccess)
+                    await _storage.MoveFile(id, _previewsTrashRoot, _storageOptions.PreviewsDirectoryName, ct);
+            }
+            if (!previewTrashedSuccess)
+            {
+                fault = true;
+                if (imageTrashedSuccess)
+                    await _storage.MoveFile(id,_imagesTrashRoot, _storageOptions.ImagesDirectoryName, ct);
+            }
+
+            if (fault) return ServiceResult.Fail($"Ошибка перемещения файла c id:{id} в коризну");
+
+            #endregion
+
+            #region Добавление модели удаления в базу данных
+
+            var deletionModel = new FileToDeletionModel(guid);
+
+            try
+            {
+                await _DBcontext.AddAsync(deletionModel, ct);
+            }
+            catch (Exception ex)
+            {
+                await revertFileChanges();
+                return ServiceResult.Fail($"Ошибка добавления модели удаления: {ex.Message}");
+            }
+
+            #endregion
+
+            #region Внесение изменений в базу данных
+
+            try
+            {
+                await _DBcontext.SaveChangesAsync(ct);
+            }
+            catch(Exception ex)
+            {
+                await revertFileChanges();
+                return ServiceResult.Fail($"Ошибка сохранения изменений в базе данных: {ex.Message}");
+            }
+
+            #endregion
+
+            return ServiceResult.Ok();
+
+            async Task revertFileChanges()
+            {
+                await _storage.MoveFile(id, _imagesTrashRoot, _storageOptions.ImagesDirectoryName, CancellationToken.None);
+                await _storage.MoveFile(id, _previewsTrashRoot, _storageOptions.PreviewsDirectoryName, CancellationToken.None);
             }
         }
 
@@ -220,7 +286,10 @@ namespace ImageServer.Services
         {
             try
             {
-                var guid = Guid.Parse(id);
+                Guid guid;
+
+                if (Guid.TryParse(id, out var parsedId)) guid = parsedId;
+                else return ServiceResult.Fail("Неверный формат ID");
 
                 var image = await _DBcontext.Images.FindAsync(guid, ct) ?? throw new Exception("Сущность не найдена");
 

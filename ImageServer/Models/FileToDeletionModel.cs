@@ -4,7 +4,7 @@
     {
         public Guid Id { get; set; }
 
-        public DateTime CreatedAt { get; set; }
+        public DateTime TrashedAt { get; set; }
 
         public int DeletionAttempts { get; set; }
 
@@ -13,7 +13,7 @@
         public FileToDeletionModel(Guid id)
         {
             Id = id;
-            CreatedAt = DateTime.UtcNow;
+            TrashedAt = DateTime.UtcNow;
             DeletionAttempts = 0;
         }
     }
