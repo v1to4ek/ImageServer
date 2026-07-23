@@ -5,6 +5,7 @@ using ImageServer.DTOs;
 using ImageServer.Enums;
 using ImageServer.Models;
 using ImageServer.Services.Processors;
+using ImageServer.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
@@ -129,22 +130,24 @@ namespace ImageServer.Services
 
             await using var previewStream = await _processor.ProcessAsync<PreviewConversionProcessor, Stream, Stream>(sourceStream, ct);
 
-            var imageSavingTask = _storage.SaveFileAsync(imageStream, imgName, _storageOptions.ImagesDirectoryName);
+            var imageSavingTask = _storage.SaveFileAsync(imageStream, imgName, _storageOptions.ImagesDirectoryName, ct);
 
-            var previewSavingTask = _storage.SaveFileAsync(previewStream, thumbName, _storageOptions.PreviewsDirectoryName);
+            var previewSavingTask = _storage.SaveFileAsync(previewStream, thumbName, _storageOptions.PreviewsDirectoryName, ct);
 
             await Task.WhenAll(imageSavingTask, previewSavingTask);
 
             return new ImageModel(id);
         }
 
-        public ServiceResult<Stream> GetImage(string id) 
+        public async Task<ServiceResult<Stream>> GetImageAsync(string id, CancellationToken ct)
         {
             Stream imageStream;
 
-            if(_storage.TryGetFile(id,_storageOptions.ImagesDirectoryName, out var imgStream))
+            var result = await _storage.TryGetFileAsync(id, _storageOptions.ImagesDirectoryName, ct);
+
+            if (result.success)
             {
-                imageStream = imgStream!;
+                imageStream = result.stream!;
             }
             else return ServiceResult<Stream>.Fail($"Изображение с id:{id} не найдено");
 
@@ -153,47 +156,64 @@ namespace ImageServer.Services
 
         public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetPagedResultAsync(PagedRequest request, CancellationToken ct)
         {
-            var imgQuery = _DBcontext.Images.AsNoTracking();
-            
+            if(request.PageNumber <= 0 || request.PageSize <= 0)
+            {
+                return ServiceResult<PagedResponse<ImageDTO>>.Fail("Номер страницы и размер страницы должны быть больше нуля");
+            }
+
+            if(request.PageSize > _serviceOptions.MaxAllowedPageSize)
+            {
+                return ServiceResult<PagedResponse<ImageDTO>>.Fail($"Размер страницы не может превышать {_serviceOptions.MaxAllowedPageSize}");
+            }
+
             var isAscending = request.OrderingType == OrderingTypes.Ascending;
 
             var orderingSelector = request.OrderingSelector;
 
-            ImageModelFilterDelegate filterDelegate = null!;
+            ImageModelFilterDelegate filter = null!;
 
             if (_orderingSelectors.TryGetValue(orderingSelector, out var resultDelegate))
             {
-                filterDelegate = resultDelegate;
+                filter = resultDelegate;
             }
             else
             {
-                filterDelegate = _orderingSelectors[0];
+                filter = _orderingSelectors[0];
             }
 
-            var orderedQuery = filterDelegate(imgQuery, isAscending);
+            try
+            {
+                var imgQuery = _DBcontext.Images.AsNoTracking();
 
-            var totalCount = await imgQuery.CountAsync(ct);
+                var orderedQuery = filter(imgQuery, isAscending);
 
-            var itemsToTake = await orderedQuery
-                .Skip((request.PageNumber - 1) * request.PageSize)
-                .Take(request.PageSize)
-                .Select(img =>
-                new ImageDTO(
-                    img.Id.ToString(), 
-                    _storageOptions.ImagesDirectoryName, 
-                    _storageOptions.PreviewsDirectoryName,
-                    img.Name, 
-                    img.IsFavourite,
-                    img.CreatedAt))
-                .ToListAsync(ct);
+                var totalCount = await imgQuery.CountAsync(ct);
 
-            var response = new PagedResponse<ImageDTO>
-                (itemsToTake,
-                totalCount,
-                request.PageNumber,
-                request.PageSize);
+                var itemsToTake = await orderedQuery
+                    .Skip((request.PageNumber - 1) * request.PageSize)
+                    .Take(request.PageSize)
+                    .Select(img =>
+                    new ImageDTO(
+                        img.Id.ToString(),
+                        _storageOptions.ImagesDirectoryName,
+                        _storageOptions.PreviewsDirectoryName,
+                        img.Name,
+                        img.IsFavourite,
+                        img.CreatedAt))
+                    .ToListAsync(ct);
 
-            return ServiceResult<PagedResponse<ImageDTO>>.Ok(response);
+                var response = new PagedResponse<ImageDTO>
+                    (itemsToTake,
+                    totalCount,
+                    request.PageNumber,
+                    request.PageSize);
+
+                return ServiceResult<PagedResponse<ImageDTO>>.Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<PagedResponse<ImageDTO>>.Fail($"Ошибка получения данных: {ex.Message}");
+            }
         }
 
         public async Task<ServiceResult> DeleteAsync(string id, CancellationToken ct)
@@ -277,8 +297,10 @@ namespace ImageServer.Services
 
             async Task revertFileChanges()
             {
-                await _storage.MoveFile(id, _imagesTrashRoot, _storageOptions.ImagesDirectoryName, CancellationToken.None);
-                await _storage.MoveFile(id, _previewsTrashRoot, _storageOptions.PreviewsDirectoryName, CancellationToken.None);
+                var imageReverted = _storage.MoveFile(id, _imagesTrashRoot, _storageOptions.ImagesDirectoryName, CancellationToken.None);
+                var previewReverted = _storage.MoveFile(id, _previewsTrashRoot, _storageOptions.PreviewsDirectoryName, CancellationToken.None);
+
+                await Task.WhenAll(imageReverted, previewReverted);
             }
         }
 

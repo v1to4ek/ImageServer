@@ -1,26 +1,9 @@
 ﻿using ImageServer.Abstractions;
 
-namespace ImageServer.Services
+namespace ImageServer.Services.Repositories
 {
     public static class StorageExtensions
     {
-        public static bool TryGetFile(this IStorage storage,
-            string fileId,
-            string relativePath,
-            out Stream? stream)
-        {
-            try
-            {
-                stream = storage.GetFile(fileId, relativePath);
-                return true;
-            }
-            catch (Exception)
-            {
-                stream = null;
-                return false;
-            }
-        }
-
         public static async Task<bool> TrySaveFileAsync(this IStorage storage,
             Stream stream,
             string fileId,
@@ -38,13 +21,14 @@ namespace ImageServer.Services
             }
         }
 
-        public static bool TryDeleteFile(this IStorage storage,
+        public static async Task<bool> TryDeleteFile(this IStorage storage,
             string fileId,
-            string relativePath)
+            string relativePath,
+            CancellationToken ct = default)
         {
             try
             {
-                storage.DeleteFile(fileId, relativePath);
+                await storage.DeleteFileAsync(fileId, relativePath, ct);
                 return true;
             }
             catch (Exception)
@@ -53,25 +37,46 @@ namespace ImageServer.Services
             }
         }
 
+        public static async Task<(bool success, Stream? stream)> TryGetFileAsync(this IStorage storage,
+            string fileId,
+            string relativePath,
+            CancellationToken ct = default)
+        {
+            try
+            {
+                var stream = await storage.GetFileAsync(fileId, relativePath, ct);
+                return (true, stream);
+            }
+            catch (Exception)
+            {
+                return (false, null);
+            }
+        }
+
         public static async Task MoveFile(this IStorage storage,
             string fileId,
             string sourceRelativePath,
             string destinationRelativePath,
             CancellationToken ct = default)
-        {
-            var fileStream = storage.GetFile(fileId, sourceRelativePath);
+            => await storage.ExecuteAsync(fileId,
+                async innerStorage =>
+                {
 
-            try
-            {
-                await storage.SaveFileAsync(fileStream, fileId, destinationRelativePath, ct);
-            }
-            finally
-            {
-                await fileStream.DisposeAsync();
-            }
+                    var fileStream = await innerStorage.GetFileAsync(fileId, sourceRelativePath, ct);
 
-            storage.DeleteFile(fileId, sourceRelativePath);
-        }
+                    try
+                    {
+                        await innerStorage.SaveFileAsync(fileStream, fileId, destinationRelativePath, ct);
+                    }
+                    finally
+                    {
+                        await fileStream.DisposeAsync();
+                    }
+
+                    await innerStorage.DeleteFileAsync(fileId, sourceRelativePath, ct);
+
+                }, ct);
+
 
         public static async Task<bool> TryMoveFile(this IStorage storage,
             string fileId,

@@ -9,23 +9,35 @@ namespace ImageServer
         public static void AddImageAPI(this WebApplication webApplication)
         {
 
-            webApplication.MapGet("/images", async (ImageService service,[AsParameters] PagedRequest request, CancellationToken ct) =>
+            webApplication.MapGet("/images", 
+                async (ImageService service,
+                [AsParameters] PagedRequest request, 
+                CancellationToken ct) =>
             {
                 var result = await service.GetPagedResultAsync(request, ct);
 
-                return Results.Ok(result.Data);
+                return result.IsSuccess
+                ? Results.Ok(result.Data)
+                : Results.BadRequest(result.Error);
             });
 
-            webApplication.MapGet("/images/{id}", (ImageService service, string id) =>
+            webApplication.MapGet("/images/{id}",
+                async (ImageService service,
+                string id, 
+                CancellationToken ct) =>
             {
-                var result = service.GetImage(id);
+                var result = await service.GetImageAsync(id, ct);
 
                 return result.IsSuccess
                 ? Results.File(result.Data!,"image/webp", id)
                 : Results.NotFound(result.Error);
             });
 
-            webApplication.MapPut("/images/{id}/favourite", async (ImageService service, string id, SetFavouriteCommand command, CancellationToken ct) =>
+            webApplication.MapPut("/images/{id}/favourite",
+                async (ImageService service, 
+                string id,
+                SetFavouriteCommand command, 
+                CancellationToken ct) =>
             {
                 var result = await service.UpdateAsync(id, command, ct);
 
@@ -34,7 +46,11 @@ namespace ImageServer
                 : Results.NotFound(result.Error);
             });
 
-            webApplication.MapPut("/images/{id}/rename", async (ImageService service, string id, RenameCommand command, CancellationToken ct) =>
+            webApplication.MapPut("/images/{id}/rename", 
+                async (ImageService service, 
+                string id,
+                RenameCommand command,
+                CancellationToken ct) =>
             {
                 var result = await service.UpdateAsync(id, command, ct);
 
@@ -43,7 +59,10 @@ namespace ImageServer
                 : Results.NotFound(result.Error);
             });
 
-            webApplication.MapPost("/images", async (ImageService service, IFormFileCollection formFiles, CancellationToken ct) =>
+            webApplication.MapPost("/images",
+                async (ImageService service, 
+                IFormFileCollection formFiles, 
+                CancellationToken ct) =>
             {
                 var result = await service.SaveImagesAsync(formFiles, ct);
 
@@ -51,7 +70,10 @@ namespace ImageServer
 
             }).DisableAntiforgery();
 
-            webApplication.MapDelete("/images/{id}", async (ImageService service, string id, CancellationToken ct) =>
+            webApplication.MapDelete("/images/{id}",
+                async (ImageService service,
+                string id,
+                CancellationToken ct) =>
             {
                 var result = await service.DeleteAsync(id, ct);
 

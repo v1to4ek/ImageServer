@@ -3,7 +3,9 @@ using ImageServer.Configuration;
 using ImageServer.Database;
 using ImageServer.Services;
 using ImageServer.Services.Processors;
+using ImageServer.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SixLabors.ImageSharp;
 using System.Net;
 using System.Net.Sockets;
@@ -30,7 +32,8 @@ namespace ImageServer
             builder.Services.AddSingleton(serviceProvider => new PreviewConversionProcessor(300, 300));
             builder.Services.AddSingleton<ExtentionValidationProcessor>();
 
-            builder.Services.AddSingleton<IStorage, LocalRepository>();
+            builder.Services.AddSingleton<LocalRepository>();
+            builder.Services.AddSingleton<IStorage>(serviceProvider => new ConcurrentRepository(serviceProvider.GetRequiredService<LocalRepository>()));
 
             var DbOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>();
             builder.Services.AddDbContext<AppDBContext>(options => options.UseNpgsql(DbOptions!.ConnectionString));
