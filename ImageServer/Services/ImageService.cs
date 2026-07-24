@@ -25,10 +25,6 @@ namespace ImageServer.Services
 
         private readonly StorageOptions _storageOptions;
 
-        private readonly string _imagesTrashRoot; 
-
-        private readonly string _previewsTrashRoot;
-
         private delegate IOrderedQueryable<ImageModel> ImageModelFilterDelegate(IQueryable<ImageModel> query, bool ascending);
 
         private static readonly Dictionary<OrderingSelectors, ImageModelFilterDelegate> _orderingSelectors = new()
@@ -44,16 +40,22 @@ namespace ImageServer.Services
 
             public (string From, string To) PreviewsPaths { get; init; }
 
-            public static RelocationPaths ToTrash(StorageOptions options, string imagesTrashRoot, string previewsTrashRoot) => new()
+            public static RelocationPaths ToTrash(string imagesDirectoryRoot,
+                string previewsDirectoryRoot, 
+                string imagesTrashRoot,
+                string previewsTrashRoot) => new()
             {
-                ImagesPaths = (options.ImagesDirectoryName, imagesTrashRoot),
-                PreviewsPaths = (options.PreviewsDirectoryName, previewsTrashRoot)
+                ImagesPaths = (imagesDirectoryRoot, imagesTrashRoot),
+                PreviewsPaths = (previewsDirectoryRoot, previewsTrashRoot)
             };
 
-            public static RelocationPaths FromTrash(StorageOptions options, string imagesTrashRoot, string previewsTrashRoot) => new()
+            public static RelocationPaths FromTrash(string imagesDirectoryRoot, 
+                string previewsDirectoryRoot, 
+                string imagesTrashRoot, 
+                string previewsTrashRoot) => new()
             {
-                ImagesPaths = (imagesTrashRoot, options.ImagesDirectoryName),
-                PreviewsPaths = (previewsTrashRoot, options.PreviewsDirectoryName)
+                ImagesPaths = (imagesTrashRoot, imagesDirectoryRoot),
+                PreviewsPaths = (previewsTrashRoot, previewsDirectoryRoot)
             };
         }
 
@@ -72,10 +74,6 @@ namespace ImageServer.Services
             _serviceOptions = serviceOptions.Value;
 
             _storageOptions = storageOptions.Value;
-
-            _imagesTrashRoot = Path.Combine(_storageOptions.MainPath, "ImagesTrash");
-
-            _previewsTrashRoot = Path.Combine(_storageOptions.MainPath, "PreviewsTrash");
         }
 
         private static ImageModelFilterDelegate CreateFilter<TSelectorField>
@@ -237,7 +235,10 @@ namespace ImageServer.Services
 
         public async Task<ServiceResult> DeleteAsync(string id, CancellationToken ct)
         {
-            var paths = RelocationPaths.ToTrash(_storageOptions, _imagesTrashRoot, _previewsTrashRoot);
+            var paths = RelocationPaths.ToTrash(_storageOptions.ImagesDirectoryName,
+                _storageOptions.PreviewsDirectoryName,
+                _storageOptions.ImagesTrashDirectoryName,
+                _storageOptions.PreviewsTrashDirectoryName);
 
             var operationResult = await RelocateAtomicAsync(id, paths,
                 async (context, guid) => (await context.Images.FindAsync(guid, ct))!,
@@ -249,7 +250,10 @@ namespace ImageServer.Services
 
         public async Task<ServiceResult> RestoreAsync(string id, CancellationToken ct)
         {
-            var paths = RelocationPaths.FromTrash(_storageOptions, _imagesTrashRoot, _previewsTrashRoot);
+            var paths = RelocationPaths.FromTrash(_storageOptions.ImagesDirectoryName,
+                _storageOptions.PreviewsDirectoryName,
+                _storageOptions.ImagesTrashDirectoryName,
+                _storageOptions.PreviewsTrashDirectoryName);
 
             var operationResult = await RelocateAtomicAsync(id, paths,
                 async (context, guid) => (await context.FilesToDeletion.FindAsync(guid, ct))!,

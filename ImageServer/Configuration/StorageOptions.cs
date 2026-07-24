@@ -6,9 +6,13 @@ namespace ImageServer.Configuration
     {
         public static string SectionName => "Storage";
 
-        public string ImagesDirectoryName { get; set; } = "images";
+        public string ImagesDirectoryName { get; set; } = "Images";
 
-        public string PreviewsDirectoryName { get; set; } = "previews";
+        public string PreviewsDirectoryName { get; set; } = "Previews";
+
+        public string ImagesTrashDirectoryName { get; set; } = "ImagesTrash";
+
+        public string PreviewsTrashDirectoryName { get; set; } = "PreviewsTrash";
 
         public string MainPath { get; set; } = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
     }
