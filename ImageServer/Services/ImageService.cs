@@ -38,6 +38,25 @@ namespace ImageServer.Services
             [OrderingSelectors.Favourite] = CreateFilter(model => model.IsFavourite)
         };
 
+        private readonly record struct RelocationPaths
+        {
+            public (string From, string To) ImagesPaths { get; init; }
+
+            public (string From, string To) PreviewsPaths { get; init; }
+
+            public static RelocationPaths ToTrash(StorageOptions options, string imagesTrashRoot, string previewsTrashRoot) => new()
+            {
+                ImagesPaths = (options.ImagesDirectoryName, imagesTrashRoot),
+                PreviewsPaths = (options.PreviewsDirectoryName, previewsTrashRoot)
+            };
+
+            public static RelocationPaths FromTrash(StorageOptions options, string imagesTrashRoot, string previewsTrashRoot) => new()
+            {
+                ImagesPaths = (imagesTrashRoot, options.ImagesDirectoryName),
+                PreviewsPaths = (previewsTrashRoot, options.PreviewsDirectoryName)
+            };
+        }
+
         public ImageService(AppDBContext DBcontext, 
             IImageProcessor processor, 
             IStorage storage, 
@@ -65,7 +84,7 @@ namespace ImageServer.Services
             ? query.OrderBy(selector)
             : query.OrderByDescending(selector);
 
-        public async Task<ServiceResult<SavedResult>> SaveImagesAsync(IFormFileCollection images, CancellationToken ct)
+        public async Task<ServiceResult<SavedResult>> SaveAsync(IFormFileCollection images, CancellationToken ct)
         {
             var successful = new ConcurrentBag<ImageModel>();
 
@@ -96,9 +115,9 @@ namespace ImageServer.Services
 
             if(!successful.IsEmpty)
             {
-                await _DBcontext.AddRangeAsync(successful);
+                await _DBcontext.AddRangeAsync(successful, ct);
 
-                await _DBcontext.SaveChangesAsync();
+                await _DBcontext.SaveChangesAsync(ct);
             }
 
             var savedResult = new SavedResult(
@@ -139,7 +158,7 @@ namespace ImageServer.Services
             return new ImageModel(id);
         }
 
-        public async Task<ServiceResult<Stream>> GetImageAsync(string id, CancellationToken ct)
+        public async Task<ServiceResult<Stream>> GetAsync(string id, CancellationToken ct)
         {
             Stream imageStream;
 
@@ -218,63 +237,114 @@ namespace ImageServer.Services
 
         public async Task<ServiceResult> DeleteAsync(string id, CancellationToken ct)
         {
+            var paths = RelocationPaths.ToTrash(_storageOptions, _imagesTrashRoot, _previewsTrashRoot);
+
+            var operationResult = await RelocateAtomicAsync(id, paths,
+                async (context, guid) => (await context.Images.FindAsync(guid, ct))!,
+                guid => new FileToDeletionModel(guid),
+                ct);
+
+            return operationResult;
+        }
+
+        public async Task<ServiceResult> RestoreAsync(string id, CancellationToken ct)
+        {
+            var paths = RelocationPaths.FromTrash(_storageOptions, _imagesTrashRoot, _previewsTrashRoot);
+
+            var operationResult = await RelocateAtomicAsync(id, paths,
+                async (context, guid) => (await context.FilesToDeletion.FindAsync(guid, ct))!,
+                guid => new ImageModel(guid),
+                ct);
+
+            return operationResult;
+        }
+
+        private async Task<ServiceResult> RelocateAtomicAsync<TModelFrom,TModelTo>(string id,
+            RelocationPaths relocationPaths,
+            Func<AppDBContext, Guid, ValueTask<TModelFrom>> modelToDeleteFactory,
+            Func<Guid, TModelTo> modelToSaveFactory,
+            CancellationToken ct)
+            where TModelFrom : class
+            where TModelTo : class
+        {
             Guid guid;
 
-            if (Guid.TryParse(id, out var parsedId)) guid = parsedId;
+            if(Guid.TryParse(id, out var parsedId)) guid = parsedId;
             else return ServiceResult.Fail("Неверный формат ID");
 
             #region Удаление из базы данных(в памяти)
 
             try
             {
-                var image = await _DBcontext.Images.FindAsync(guid, ct)
-                   ?? throw new InvalidOperationException($"Изображение с id:{id} не найдено.");
+                var modelToDelete = await modelToDeleteFactory(_DBcontext, guid)
+                    ?? throw new InvalidOperationException($"Запись с ID:{id} не найдена.");
 
-                _DBcontext.Images.Remove(image);
+                _DBcontext.Set<TModelFrom>().Remove(modelToDelete);
             }
             catch (Exception ex)
             {
-                return ServiceResult.Fail(ex.Message);
+                return ServiceResult.Fail($"Ошибка удаления модели из базы данных: {ex.Message}");
             }
 
             #endregion
 
             #region Перемещение файлов в корзину 
 
-            var imageTrashedSuccess = await _storage.TryMoveFile(id, _storageOptions.ImagesDirectoryName, _imagesTrashRoot, ct); 
-            var previewTrashedSuccess = await _storage.TryMoveFile(id, _storageOptions.PreviewsDirectoryName, _previewsTrashRoot, ct);
-
-            bool fault = false;
-
-            if (!imageTrashedSuccess)
+            try
             {
-                fault = true;
-                if (previewTrashedSuccess)
-                    await _storage.MoveFile(id, _previewsTrashRoot, _storageOptions.PreviewsDirectoryName, ct);
-            }
-            if (!previewTrashedSuccess)
-            {
-                fault = true;
-                if (imageTrashedSuccess)
-                    await _storage.MoveFile(id,_imagesTrashRoot, _storageOptions.ImagesDirectoryName, ct);
-            }
+                await _storage.ExecuteAsync(id, async storage =>
+                {
+                    var imageRelocatedSuccess = await storage
+                    .TryMoveFileAsync(id,
+                    relocationPaths.ImagesPaths.From,
+                    relocationPaths.ImagesPaths.To,
+                    ct);
 
-            if (fault) return ServiceResult.Fail($"Ошибка перемещения файла c id:{id} в коризну");
+                    var previewRelocaredSuccess = await storage
+                    .TryMoveFileAsync(id,
+                    relocationPaths.PreviewsPaths.From,
+                    relocationPaths.PreviewsPaths.To,
+                    ct);
+
+                    if(!imageRelocatedSuccess || !previewRelocaredSuccess)
+                    {
+                        if (imageRelocatedSuccess)
+                            await storage
+                            .MoveFileAsync(id,
+                            relocationPaths.ImagesPaths.To,
+                            relocationPaths.ImagesPaths.From,
+                            ct);
+
+                        if (previewRelocaredSuccess)
+                            await storage
+                            .MoveFileAsync(id,
+                            relocationPaths.PreviewsPaths.To,
+                            relocationPaths.PreviewsPaths.From,
+                            ct);
+
+                        throw new IOException($"Ошибка перемещения файла c ID:{id} в корзину");
+                    }
+                },
+                ct);
+            }
+            catch(Exception ex)
+            {
+                return ServiceResult.Fail(ex.Message);
+            }
 
             #endregion
 
-            #region Добавление модели удаления в базу данных
-
-            var deletionModel = new FileToDeletionModel(guid);
+            #region Добавление модели в другую базу данных
 
             try
             {
-                await _DBcontext.AddAsync(deletionModel, ct);
+                var relocatedModel = modelToSaveFactory(guid);
+                await _DBcontext.Set<TModelTo>().AddAsync(relocatedModel, ct);
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
-                await revertFileChanges();
-                return ServiceResult.Fail($"Ошибка добавления модели удаления: {ex.Message}");
+                await RollbackFileChangesAsync();
+                return ServiceResult.Fail($"Ошибка добавления модели в базу назначения: {ex.Message}");
             }
 
             #endregion
@@ -285,9 +355,9 @@ namespace ImageServer.Services
             {
                 await _DBcontext.SaveChangesAsync(ct);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                await revertFileChanges();
+                await RollbackFileChangesAsync();
                 return ServiceResult.Fail($"Ошибка сохранения изменений в базе данных: {ex.Message}");
             }
 
@@ -295,13 +365,29 @@ namespace ImageServer.Services
 
             return ServiceResult.Ok();
 
-            async Task revertFileChanges()
-            {
-                var imageReverted = _storage.MoveFile(id, _imagesTrashRoot, _storageOptions.ImagesDirectoryName, CancellationToken.None);
-                var previewReverted = _storage.MoveFile(id, _previewsTrashRoot, _storageOptions.PreviewsDirectoryName, CancellationToken.None);
+            #region Локальный метод отката изменений в файловой системе 
 
-                await Task.WhenAll(imageReverted, previewReverted);
-            }
+            async Task RollbackFileChangesAsync()
+                => await _storage.ExecuteAsync(id,
+                async storage =>
+                {
+                    var imageReverted = storage
+                    .MoveFileAsync(id,
+                    relocationPaths.ImagesPaths.To,
+                    relocationPaths.ImagesPaths.From,
+                    CancellationToken.None);
+
+                    var previewReverted = storage
+                    .MoveFileAsync(id,
+                    relocationPaths.PreviewsPaths.To,
+                    relocationPaths.PreviewsPaths.From,
+                    CancellationToken.None);
+
+                    await Task.WhenAll(imageReverted, previewReverted);
+                },
+                CancellationToken.None);
+
+            #endregion
         }
 
         public async Task<ServiceResult> UpdateAsync(string id, IImageUpdateCommand command, CancellationToken ct)

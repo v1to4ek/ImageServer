@@ -53,7 +53,7 @@ namespace ImageServer.Services.Repositories
             }
         }
 
-        public static async Task MoveFile(this IStorage storage,
+        public static async Task MoveFileAsync(this IStorage storage,
             string fileId,
             string sourceRelativePath,
             string destinationRelativePath,
@@ -78,7 +78,7 @@ namespace ImageServer.Services.Repositories
                 }, ct);
 
 
-        public static async Task<bool> TryMoveFile(this IStorage storage,
+        public static async Task<bool> TryMoveFileAsync(this IStorage storage,
             string fileId,
             string sourceRelativePath,
             string destinationRelativePath,
@@ -86,7 +86,7 @@ namespace ImageServer.Services.Repositories
         {
             try
             {
-                await storage.MoveFile(fileId, sourceRelativePath, destinationRelativePath, ct);
+                await storage.MoveFileAsync(fileId, sourceRelativePath, destinationRelativePath, ct);
                 return true;
             }
             catch (Exception)
