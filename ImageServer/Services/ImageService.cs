@@ -134,8 +134,8 @@ namespace ImageServer.Services
             if (!isValid) throw new InvalidOperationException($"Недопустимый формат файла: {Path.GetExtension(image.FileName)}");
 
             var id = Guid.NewGuid();
-            var imgName = $"{id}.webp";
-            var thumbName = $"{id}.webp";
+            var imgName = id.ToString();
+            var thumbName = id.ToString(); 
 
             await using var sourceStream = new MemoryStream();
 
@@ -322,7 +322,7 @@ namespace ImageServer.Services
                             relocationPaths.PreviewsPaths.From,
                             ct);
 
-                        throw new IOException($"Ошибка перемещения файла c ID:{id} в корзину");
+                        throw new IOException($"Ошибка перемещения файла c ID:{id}");
                     }
                 },
                 ct);

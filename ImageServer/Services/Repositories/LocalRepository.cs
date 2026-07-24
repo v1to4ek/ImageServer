@@ -28,7 +28,7 @@ namespace ImageServer.Services.Repositories
         {
             var fullPath = Path.Combine(_storagePath, relativePath);
 
-            var filePath = Path.Combine(fullPath, fileName);
+            var filePath = $"{Path.Combine(fullPath, fileName)}.webp" ;
 
             Directory.CreateDirectory(fullPath);
 
