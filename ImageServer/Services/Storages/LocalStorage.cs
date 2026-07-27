@@ -2,21 +2,21 @@
 using ImageServer.Configuration;
 using Microsoft.Extensions.Options;
 
-namespace ImageServer.Services.Repositories
+namespace ImageServer.Services.Storages
 {
-    public class LocalRepository : IStorage
+    public class LocalStorage : IStorage
     {
         private readonly string _storagePath;
 
         /// <summary>
         /// Конструктор для ручной передачи строки хранилища
         /// </summary>
-        public LocalRepository(string storagePath)
+        public LocalStorage(string storagePath)
         {
             _storagePath = storagePath;
         }
 
-        public LocalRepository(IOptions<StorageOptions> options)
+        public LocalStorage(IOptions<StorageOptions> options)
         {
             _storagePath = options.Value.MainPath;
         }

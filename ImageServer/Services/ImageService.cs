@@ -5,7 +5,7 @@ using ImageServer.DTOs;
 using ImageServer.Enums;
 using ImageServer.Models;
 using ImageServer.Services.Processors;
-using ImageServer.Services.Repositories;
+using ImageServer.Services.Storages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;

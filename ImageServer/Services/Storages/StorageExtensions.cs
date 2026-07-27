@@ -1,6 +1,6 @@
 ﻿using ImageServer.Abstractions;
 
-namespace ImageServer.Services.Repositories
+namespace ImageServer.Services.Storages
 {
     public static class StorageExtensions
     {

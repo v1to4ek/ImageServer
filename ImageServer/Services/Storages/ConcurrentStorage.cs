@@ -1,7 +1,7 @@
 ﻿using ImageServer.Abstractions;
 using System.Collections.Concurrent;
 
-namespace ImageServer.Services.Repositories
+namespace ImageServer.Services.Storages
 {
     /// <summary>
     /// Потокобезопасный декоратор над основным классом доступа к файловой системе.
@@ -18,7 +18,7 @@ namespace ImageServer.Services.Repositories
     ///   чтобы удалять объекты семафоры из словаря по этому ключу, если на семафор больше нет ссылок. Данные действия выполняются в методе dispose, так как токен реализует
     ///   IDisposable, чтобы все эти дейтсвия происходили после прохода метода основного класса.</para>
     /// </summary>
-    public class ConcurrentRepository : IStorage
+    public class ConcurrentStorage : IStorage
     {
         private readonly IStorage _innerStorage;
 
@@ -185,7 +185,7 @@ namespace ImageServer.Services.Repositories
 
         #endregion
 
-        public ConcurrentRepository(IStorage storage) => _innerStorage = storage;
+        public ConcurrentStorage(IStorage storage) => _innerStorage = storage;
 
         /// <summary>
         /// Метод для получения токена синхронизации для доступа к конкретному файлу.

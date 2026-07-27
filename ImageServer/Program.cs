@@ -3,7 +3,7 @@ using ImageServer.Configuration;
 using ImageServer.Database;
 using ImageServer.Services;
 using ImageServer.Services.Processors;
-using ImageServer.Services.Repositories;
+using ImageServer.Services.Storages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SixLabors.ImageSharp;
@@ -23,6 +23,7 @@ namespace ImageServer
             builder.AddConfigOption<StorageOptions>();
             builder.AddConfigOption<DatabaseOptions>();
             builder.AddConfigOption<ImgServiceOptions>();
+            builder.AddConfigOption<DeletionOptions>();
 
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
@@ -32,8 +33,8 @@ namespace ImageServer
             builder.Services.AddSingleton(serviceProvider => new PreviewConversionProcessor(300, 300));
             builder.Services.AddSingleton<ExtentionValidationProcessor>();
 
-            builder.Services.AddSingleton<LocalRepository>();
-            builder.Services.AddSingleton<IStorage>(serviceProvider => new ConcurrentRepository(serviceProvider.GetRequiredService<LocalRepository>()));
+            builder.Services.AddSingleton<LocalStorage>();
+            builder.Services.AddSingleton<IStorage>(serviceProvider => new ConcurrentStorage(serviceProvider.GetRequiredService<LocalStorage>()));
 
             var DbOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>();
             builder.Services.AddDbContext<AppDBContext>(options => options.UseNpgsql(DbOptions!.ConnectionString));
