@@ -3,6 +3,21 @@ using System.Collections.Concurrent;
 
 namespace ImageServer.Services.Repositories
 {
+    /// <summary>
+    /// Потокобезопасный декоратор над основным классом доступа к файловой системе.
+    /// Метды класса добавляют дополнительный функционал для потокобезопасного доступа к файлам, не модифицируя методы основого класса.
+    /// Основной класс передаётся в _innerStorage.
+    /// Класс хранит потокобезопасный словарь с объектами с семафорами для каждого отдельного fileId,
+    /// для реализации асинхронного блокирования не ко всей ФС целиком, а к отдельному файлу на один поток.
+    /// <para> Принцип работы: </para>
+    /// <para> 1) При вызове метода для взаимодействия с файлом поток попадает в метод AcquireFileLockAsync. </para>
+    /// <para> 2) Поток создаёт или получает из словаря объект с семафором и ссылками на этот семаор(ссылки нужны для последующего уничтожения, если ссылок не будет) по ключу-имени файла, 
+    ///   (это нужно, чтобы привязать семафоры к файлам: то есть семафор блокирует один конуреный файл, а не всю ФС) для прохода к критической секции. </para>
+    /// <para> 3) Поток проходит WaitAsync дальше, либо асинхронно освобождается на время ожидания. </para>
+    /// <para> 4) После прохода WaitAsync, поток получает объект токена SemaphoreReleaserToken для освобождения семафора, токен содержит в себе ссылку на словарь с семафорами и ключ-имя файла
+    ///   чтобы удалять объекты семафоры из словаря по этому ключу, если на семафор больше нет ссылок. Данные действия выполняются в методе dispose, так как токен реализует
+    ///   IDisposable, чтобы все эти дейтсвия происходили после прохода метода основного класса.</para>
+    /// </summary>
     public class ConcurrentRepository : IStorage
     {
         private readonly IStorage _innerStorage;
@@ -11,13 +26,17 @@ namespace ImageServer.Services.Repositories
 
         private readonly Lock _locker = new();
 
-        #region Обёртка над стримом, освобождающая семафор при закрытии 
+        #region Декоратор над стримом, освобождающая объект с семафором при закрытии 
 
+        /// <summary>
+        /// Декоратор над стримом, имеющий в себе IDisposable токен для открытия семафора при закрытии стрима.
+        /// При закрытии стрима и вызове у него dispose, вызывается dispose и у токена, что приводит к освобождению семафора.
+        /// </summary>
         private sealed class LockReleaserStream : Stream
         {
             private readonly Stream _innerStream;
 
-            private readonly IDisposable _lockReleaser;
+            private readonly IDisposable _releaseToken;
 
             private bool _disposed;
 
@@ -34,7 +53,7 @@ namespace ImageServer.Services.Repositories
             public LockReleaserStream(Stream innerStream, IDisposable lockReleaser)
             {
                 _innerStream = innerStream;
-                _lockReleaser = lockReleaser;
+                _releaseToken = lockReleaser;
             }
 
             public override void Flush() => _innerStream.Flush();
@@ -74,7 +93,7 @@ namespace ImageServer.Services.Repositories
                     }
                     finally
                     {
-                        _lockReleaser.Dispose();
+                        _releaseToken.Dispose();
                     }
                 }
                 base.Dispose(disposing);
@@ -91,7 +110,7 @@ namespace ImageServer.Services.Repositories
                     }
                     finally
                     {
-                        _lockReleaser.Dispose();
+                        _releaseToken.Dispose();
                     }
                 }
             }
@@ -101,6 +120,12 @@ namespace ImageServer.Services.Repositories
 
         #region Обёртка над семафором, которая хранит количество ссылок на него
 
+        /// <summary>
+        /// Обёртка над SemaphoreSlim создающая новый семафор, пропускающий один поток и хранящая количетсво ссылок на него.
+        /// Новый объект этого класса и ,соответственно, сам семафор создаются только для новых fileId, которых ещё нет в _semaphoreFileLockers. В противном случае инкрементируется RefCount.
+        /// При вызове dispose у SemaphoreReleaserToken, в случае если у SemaphoreRefWrapper количество ссылок RefCount = 1, он удаляется из словаря, если нет, то RefCount декрементируется.
+        /// Данный механизм используется только для того, чтобы постоянно не забивать словарь новыми SemaphoreRefWrapper, даже если файлы уже не используются, чтобы избежать утечки памяти.
+        /// </summary>
         private sealed class SemaphoreRefWrapper
         {
             public readonly SemaphoreSlim Semaphore = new (1,1);
@@ -110,9 +135,15 @@ namespace ImageServer.Services.Repositories
 
         #endregion
 
-        #region Обёртка над семафором, которая освобождает его при закрытии и удаляет из словаря, если ссылок на него больше нет
+        #region Класс-токен синхронизации для освобождения семафора при вызове dispose и удаления его из словаря, если на него больше нет ссылок.
 
-        private sealed class SemaphoreReleaser : IDisposable
+        /// <summary>
+        /// Токен освобождения семафора для других потоков при вызове метода dispose у этого класса.
+        /// Содержит в себе ссылку на словарь _semaphoreFileLockers из основного класса,
+        /// для удаления SemaphoreRefWrapper по ключу _fileId из него в случае, если на SemaphoreRefWrapper больше нет ссылок.
+        /// Также имеет сам объект семафора для его открытия при вызове метода dispose.
+        /// </summary>
+        private sealed class SemaphoreReleaserToken : IDisposable
         {
             private readonly SemaphoreRefWrapper _semaphoreWrapper;
 
@@ -123,7 +154,8 @@ namespace ImageServer.Services.Repositories
             private readonly Lock _locker;
 
             private bool _disposed;
-            public SemaphoreReleaser(SemaphoreRefWrapper semaphoreWrapper,
+
+            public SemaphoreReleaserToken(SemaphoreRefWrapper semaphoreWrapper,
                 ConcurrentDictionary<string, SemaphoreRefWrapper> semaphoreFileLockers,
                 Lock locker,
                 string fileId)
@@ -136,6 +168,7 @@ namespace ImageServer.Services.Repositories
 
                 _fileId = fileId;
             }
+
             public void Dispose()
             {
                 if(_disposed) return;
@@ -154,7 +187,17 @@ namespace ImageServer.Services.Repositories
 
         public ConcurrentRepository(IStorage storage) => _innerStorage = storage;
 
-        private async Task<IDisposable> AcquireFileLockAsync(string fileName, CancellationToken ct = default)
+        /// <summary>
+        /// Метод для получения токена синхронизации для доступа к конкретному файлу.
+        /// <para> Получает или создаёт семафор и кладёт его в словарь с ключом fileId, инкрементируюя количество ссылок на него.</para>
+        /// <para> Отпускает поток в ожидание или пропускает дальше. </para>
+        /// <para> В случае отмены операции декрементирует количество ссылок на семафор, либо удаляет его из словаря. Лок нужен для избежания гонки за ресурсы в случае отмены нескольких запросов сразу</para>
+        /// <para> После прохода ожидания WaitAsync даёт потоку, который его прошёл, токен на релиз семафора. Поток выходит из метода и переходит к критической секции </para>
+        /// </summary>
+        /// <param name="fileName">Имя файла, к которому будет предоставлен доступ</param>
+        /// <param name="ct">Токен отмены операции</param>
+        /// <returns>Токен синхронизации на освобождение семафора</returns>
+        private async Task<IDisposable> AcquireFileLockTokenAsync(string fileName, CancellationToken ct = default)
         {
             SemaphoreRefWrapper semaphore;
 
@@ -177,23 +220,23 @@ namespace ImageServer.Services.Repositories
                 throw;
             }
 
-            return new SemaphoreReleaser(semaphore, _semaphoreFileLockers, _locker, fileName);
+            return new SemaphoreReleaserToken(semaphore, _semaphoreFileLockers, _locker, fileName);
         }
 
         public async Task<Stream> GetFileAsync(string fileName,
             string relativePath,
             CancellationToken ct = default)
         {
-            var releaser = await AcquireFileLockAsync(fileName, ct);
+            var syncToken = await AcquireFileLockTokenAsync(fileName, ct);
 
             try
             {
                 var stream = await _innerStorage.GetFileAsync(fileName, relativePath, ct);
-                return new LockReleaserStream(stream, releaser);
+                return new LockReleaserStream(stream, syncToken);
             }
             catch
             {
-                releaser.Dispose();
+                syncToken.Dispose();
                 throw;
             }
         }
@@ -203,7 +246,7 @@ namespace ImageServer.Services.Repositories
             string relativePath,
             CancellationToken ct = default)
         {
-            using var releaser = await AcquireFileLockAsync(fileName, ct);
+            using var syncToken = await AcquireFileLockTokenAsync(fileName, ct);
 
             await _innerStorage.SaveFileAsync(stream, fileName, relativePath, ct);
         }
@@ -212,7 +255,7 @@ namespace ImageServer.Services.Repositories
             string relativePath, 
             CancellationToken ct = default)
         {
-            using var releaser = await AcquireFileLockAsync(fileName, ct);
+            using var syncToken = await AcquireFileLockTokenAsync(fileName, ct);
 
             await _innerStorage.DeleteFileAsync(fileName, relativePath, ct);
         }
@@ -221,7 +264,7 @@ namespace ImageServer.Services.Repositories
             Func<IStorage, Task> operation, 
             CancellationToken ct = default)
         {
-            using var releaser = await AcquireFileLockAsync(fileName, ct);
+            using var syncToken = await AcquireFileLockTokenAsync(fileName, ct);
 
             await operation(_innerStorage);
         }

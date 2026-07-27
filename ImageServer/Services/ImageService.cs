@@ -281,13 +281,13 @@ namespace ImageServer.Services
             try
             {
                 var modelToDelete = await modelToDeleteFactory(_DBcontext, guid)
-                    ?? throw new InvalidOperationException($"Запись с ID:{id} не найдена.");
+                    ?? throw new InvalidOperationException($"Запись с ID:{id} не найдена");
 
                 _DBcontext.Set<TModelFrom>().Remove(modelToDelete);
             }
             catch (Exception ex)
             {
-                return ServiceResult.Fail($"Ошибка удаления модели из базы данных: {ex.Message}");
+                return ServiceResult.Fail($"Ошибка удаления модели из базы данных: {ex.Message}. Операция не была выполнена.");
             }
 
             #endregion
@@ -298,20 +298,26 @@ namespace ImageServer.Services
             {
                 await _storage.ExecuteAsync(id, async storage =>
                 {
-                    var imageRelocatedSuccess = await storage
+                    var imageRelocatedTask = storage
                     .TryMoveFileAsync(id,
                     relocationPaths.ImagesPaths.From,
                     relocationPaths.ImagesPaths.To,
                     ct);
 
-                    var previewRelocaredSuccess = await storage
+                    var previewRelocaredTask = storage
                     .TryMoveFileAsync(id,
                     relocationPaths.PreviewsPaths.From,
                     relocationPaths.PreviewsPaths.To,
                     ct);
 
-                    if(!imageRelocatedSuccess || !previewRelocaredSuccess)
+                    await Task.WhenAll(imageRelocatedTask, previewRelocaredTask);
+
+                    var imageRelocatedSuccess = await imageRelocatedTask;
+                    var previewRelocaredSuccess = await previewRelocaredTask;
+
+                    if (!imageRelocatedSuccess || !previewRelocaredSuccess)
                     {
+
                         if (imageRelocatedSuccess)
                             await storage
                             .MoveFileAsync(id,
@@ -326,7 +332,7 @@ namespace ImageServer.Services
                             relocationPaths.PreviewsPaths.From,
                             ct);
 
-                        throw new IOException($"Ошибка перемещения файла c ID:{id}");
+                        throw new IOException($"Ошибка перемещения файла c ID:{id}. Откат действий ФС и БД.");
                     }
                 },
                 ct);
@@ -348,7 +354,7 @@ namespace ImageServer.Services
             catch(Exception ex)
             {
                 await RollbackFileChangesAsync();
-                return ServiceResult.Fail($"Ошибка добавления модели в базу назначения: {ex.Message}");
+                return ServiceResult.Fail($"Ошибка добавления модели в базу назначения: {ex.Message}. Откат действий ФС и БД.");
             }
 
             #endregion
@@ -362,7 +368,7 @@ namespace ImageServer.Services
             catch (Exception ex)
             {
                 await RollbackFileChangesAsync();
-                return ServiceResult.Fail($"Ошибка сохранения изменений в базе данных: {ex.Message}");
+                return ServiceResult.Fail($"Ошибка сохранения изменений в базе данных: {ex.Message}. Откат действий ФС и БД.");
             }
 
             #endregion
