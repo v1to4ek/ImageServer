@@ -21,7 +21,7 @@ namespace ImageServer.Services.Storages
             }
         }
 
-        public static async Task<bool> TryDeleteFile(this IStorage storage,
+        public static async Task<bool> TryDeleteFileAsync(this IStorage storage,
             string fileId,
             string relativePath,
             CancellationToken ct = default)

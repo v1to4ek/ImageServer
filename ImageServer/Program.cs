@@ -41,6 +41,8 @@ namespace ImageServer
 
             builder.Services.AddScoped<ImageService>();
 
+            builder.Services.AddHostedService<DeletionBackgroundService>();
+
             var app = builder.Build();
 
             using (var scope = app.Services.CreateScope())

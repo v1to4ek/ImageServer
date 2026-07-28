@@ -281,7 +281,7 @@ namespace ImageServer.Services
             try
             {
                 var modelToDelete = await modelToDeleteFactory(_DBcontext, guid)
-                    ?? throw new InvalidOperationException($"Запись с ID:{id} не найдена");
+                    ?? throw new KeyNotFoundException($"Запись с ID:{id} не найдена");
 
                 _DBcontext.Set<TModelFrom>().Remove(modelToDelete);
             }

@@ -6,15 +6,12 @@
 
         public DateTime TrashedAt { get; set; }
 
-        public int DeletionAttempts { get; set; }
-
         public FileToDeletionModel() { }
 
         public FileToDeletionModel(Guid id)
         {
             Id = id;
             TrashedAt = DateTime.UtcNow;
-            DeletionAttempts = 0;
         }
     }
 }

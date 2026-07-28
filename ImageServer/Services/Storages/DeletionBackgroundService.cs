@@ -1,7 +1,9 @@
 ﻿using ImageServer.Abstractions;
 using ImageServer.Configuration;
 using ImageServer.Database;
+using ImageServer.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace ImageServer.Services.Storages
 {
@@ -16,15 +18,15 @@ namespace ImageServer.Services.Storages
         private readonly IServiceProvider _serviceProvider;
 
         public DeletionBackgroundService(IStorage storage, 
-            StorageOptions storageOptions,
-            DeletionOptions deletionOptions,
+            IOptions<StorageOptions> storageOptions,
+            IOptions<DeletionOptions> deletionOptions,
             IServiceProvider serviceProvider)
         {
             _storage = storage;
 
-            _storageOptions = storageOptions;
+            _storageOptions = storageOptions.Value;
 
-            _deletionOptions = deletionOptions;
+            _deletionOptions = deletionOptions.Value;
 
             _serviceProvider = serviceProvider;
         }
@@ -44,12 +46,84 @@ namespace ImageServer.Services.Storages
 
                 var query = dbContext.FilesToDeletion.AsNoTracking();
 
-                var orderedQuery = query.OrderBy(item => item.TrashedAt);
+                var orderedQuery = query
+                    .OrderBy(item => item.TrashedAt);
 
                 var idList = await orderedQuery
                     .Take(numberToDeletion)
                     .Select(item => item.Id)
                     .ToListAsync(stoppingToken);
+
+                await Parallel.ForEachAsync(idList,
+                    new ParallelOptions
+                    { 
+                        MaxDegreeOfParallelism = _deletionOptions.ParallelsCount
+                    }, 
+                    async (id, stoppingToken) => await EraseAsync(dbContext,id,stoppingToken));
+            }
+
+        }
+
+        private async Task EraseAsync(AppDBContext DBcontextScope, Guid guid, CancellationToken ct = default)
+        {
+            var id = guid.ToString();
+
+            FileToDeletionModel model;
+
+            try
+            {
+                model = await DBcontextScope.FilesToDeletion.FindAsync(guid) 
+                    ?? throw new KeyNotFoundException();
+
+                DBcontextScope.Remove(model);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+            try
+            {
+                await DBcontextScope.SaveChangesAsync(ct);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+
+            try
+            {
+                bool imageDeletionSuccess = false;
+
+                bool previewDeletionSuccess = false;
+
+                await _storage.ExecuteAsync(id,
+                    async storage =>
+                    {
+                        var imageDeletionTask = storage
+                        .TryDeleteFileAsync(id,
+                        _storageOptions.ImagesTrashDirectoryName,
+                        ct);
+
+                        var previewDeletionTask = storage
+                        .TryDeleteFileAsync(id,
+                        _storageOptions.PreviewsTrashDirectoryName,
+                        ct);
+
+                        await Task.WhenAll(imageDeletionTask, previewDeletionTask);
+
+                        imageDeletionSuccess = await imageDeletionTask;
+
+                        previewDeletionSuccess = await previewDeletionTask;
+                    },
+                    ct);
+
+                if (!imageDeletionSuccess || !previewDeletionSuccess) throw new IOException();
+            }
+            catch (Exception)
+            {
+                return;
             }
         }
     }
