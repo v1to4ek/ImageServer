@@ -4,7 +4,7 @@ namespace ImageServer.Services.Storages
 {
     public static class StorageExtensions
     {
-        public static async Task<bool> TrySaveFileAsync(this IStorage storage,
+        public static async Task<bool> TrySaveAsync(this IStorage storage,
             Stream stream,
             string fileId,
             string relativePath,
@@ -21,7 +21,7 @@ namespace ImageServer.Services.Storages
             }
         }
 
-        public static async Task<bool> TryDeleteFileAsync(this IStorage storage,
+        public static async Task<(bool success, Exception? ex)> TryDeleteAsyncWithEx(this IStorage storage,
             string fileId,
             string relativePath,
             CancellationToken ct = default)
@@ -29,15 +29,15 @@ namespace ImageServer.Services.Storages
             try
             {
                 await storage.DeleteFileAsync(fileId, relativePath, ct);
-                return true;
+                return new (true,null);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return false;
+                return new (false, ex);
             }
         }
 
-        public static async Task<(bool success, Stream? stream)> TryGetFileAsync(this IStorage storage,
+        public static async Task<(bool success, Stream? stream)> TryGetAsync(this IStorage storage,
             string fileId,
             string relativePath,
             CancellationToken ct = default)
@@ -53,7 +53,7 @@ namespace ImageServer.Services.Storages
             }
         }
 
-        public static async Task MoveFileAsync(this IStorage storage,
+        public static async Task MoveAsync(this IStorage storage,
             string fileId,
             string sourceRelativePath,
             string destinationRelativePath,
@@ -78,7 +78,7 @@ namespace ImageServer.Services.Storages
                 }, ct);
 
 
-        public static async Task<bool> TryMoveFileAsync(this IStorage storage,
+        public static async Task<bool> TryMoveAsync(this IStorage storage,
             string fileId,
             string sourceRelativePath,
             string destinationRelativePath,
@@ -86,7 +86,7 @@ namespace ImageServer.Services.Storages
         {
             try
             {
-                await storage.MoveFileAsync(fileId, sourceRelativePath, destinationRelativePath, ct);
+                await storage.MoveAsync(fileId, sourceRelativePath, destinationRelativePath, ct);
                 return true;
             }
             catch (Exception)

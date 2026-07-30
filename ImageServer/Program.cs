@@ -37,7 +37,8 @@ namespace ImageServer
             builder.Services.AddSingleton<IStorage>(serviceProvider => new ConcurrentStorage(serviceProvider.GetRequiredService<LocalStorage>()));
 
             var DbOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>();
-            builder.Services.AddDbContext<AppDBContext>(options => options.UseNpgsql(DbOptions!.ConnectionString));
+            builder.Services.AddDbContextFactory<AppDBContext>(options => options.UseNpgsql(DbOptions!.ConnectionString));
+            builder.Services.AddScoped(serviceProvider => serviceProvider.GetRequiredService<IDbContextFactory<AppDBContext>>().CreateDbContext());
 
             builder.Services.AddScoped<ImageService>();
 
@@ -49,9 +50,9 @@ namespace ImageServer
             {
                 var serviceProvider = scope.ServiceProvider;
 
-                var DBContext = serviceProvider.GetRequiredService<AppDBContext>();
+                var dbContext = serviceProvider.GetRequiredService<AppDBContext>();
 
-                if (!DBContext.Database.CanConnect()) throw new Exception("БД недоступна при старте");
+                if (!dbContext.Database.CanConnect()) throw new Exception($"БД недоступна по адресу:\n{dbContext.Database.GetConnectionString()}\nВозможно служба не работает или адрес неверный.");
             }
 
             app.UseSwagger();

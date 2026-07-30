@@ -160,7 +160,7 @@ namespace ImageServer.Services
         {
             Stream imageStream;
 
-            var result = await _storage.TryGetFileAsync(id, _storageOptions.ImagesDirectoryName, ct);
+            var result = await _storage.TryGetAsync(id, _storageOptions.ImagesDirectoryName, ct);
 
             if (result.success)
             {
@@ -299,13 +299,13 @@ namespace ImageServer.Services
                 await _storage.ExecuteAsync(id, async storage =>
                 {
                     var imageRelocatedTask = storage
-                    .TryMoveFileAsync(id,
+                    .TryMoveAsync(id,
                     relocationPaths.ImagesPaths.From,
                     relocationPaths.ImagesPaths.To,
                     ct);
 
                     var previewRelocaredTask = storage
-                    .TryMoveFileAsync(id,
+                    .TryMoveAsync(id,
                     relocationPaths.PreviewsPaths.From,
                     relocationPaths.PreviewsPaths.To,
                     ct);
@@ -320,17 +320,17 @@ namespace ImageServer.Services
 
                         if (imageRelocatedSuccess)
                             await storage
-                            .MoveFileAsync(id,
+                            .MoveAsync(id,
                             relocationPaths.ImagesPaths.To,
                             relocationPaths.ImagesPaths.From,
-                            ct);
+                            CancellationToken.None);
 
                         if (previewRelocaredSuccess)
                             await storage
-                            .MoveFileAsync(id,
+                            .MoveAsync(id,
                             relocationPaths.PreviewsPaths.To,
                             relocationPaths.PreviewsPaths.From,
-                            ct);
+                            CancellationToken.None);
 
                         throw new IOException($"Ошибка перемещения файла c ID:{id}. Откат действий ФС и БД.");
                     }
@@ -382,13 +382,13 @@ namespace ImageServer.Services
                 async storage =>
                 {
                     var imageReverted = storage
-                    .MoveFileAsync(id,
+                    .MoveAsync(id,
                     relocationPaths.ImagesPaths.To,
                     relocationPaths.ImagesPaths.From,
                     CancellationToken.None);
 
                     var previewReverted = storage
-                    .MoveFileAsync(id,
+                    .MoveAsync(id,
                     relocationPaths.PreviewsPaths.To,
                     relocationPaths.PreviewsPaths.From,
                     CancellationToken.None);

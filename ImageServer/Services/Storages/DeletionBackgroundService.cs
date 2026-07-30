@@ -15,12 +15,21 @@ namespace ImageServer.Services.Storages
 
         private readonly DeletionOptions _deletionOptions;
 
-        private readonly IServiceProvider _serviceProvider;
+        private readonly IDbContextFactory<AppDBContext> _contextFactory;
+
+        private class ErasingItemFailedException(string id, DeletionResult imageResult, DeletionResult previewResult)
+            : Exception($"Ошибка при удалении файла с id: {id} из корзины.")
+        {
+            public DeletionResult ImageResult { get; } = imageResult;
+            public DeletionResult PreviewResult { get; } = previewResult;
+        }
+
+        private readonly record struct DeletionResult(bool Success = true, Exception? Error = null);
 
         public DeletionBackgroundService(IStorage storage, 
             IOptions<StorageOptions> storageOptions,
             IOptions<DeletionOptions> deletionOptions,
-            IServiceProvider serviceProvider)
+            IDbContextFactory<AppDBContext> contextFactory)
         {
             _storage = storage;
 
@@ -28,7 +37,7 @@ namespace ImageServer.Services.Storages
 
             _deletionOptions = deletionOptions.Value;
 
-            _serviceProvider = serviceProvider;
+            _contextFactory = contextFactory;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -41,90 +50,152 @@ namespace ImageServer.Services.Storages
 
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                using var serviceScope = _serviceProvider.CreateScope();
-                var dbContext = serviceScope.ServiceProvider.GetRequiredService<AppDBContext>();
+                try
+                {
+                    List<Guid> idList;
+                    await using (var dbContext = await _contextFactory.CreateDbContextAsync(stoppingToken)) 
+                    {
+                        if (!await dbContext.Database.CanConnectAsync(stoppingToken)) throw new Exception($"Соединение с БД прервано");
 
-                var query = dbContext.FilesToDeletion.AsNoTracking();
+                        if (!await dbContext.FilesToDeletion.IgnoreQueryFilters().AnyAsync(stoppingToken)) continue;
 
-                var orderedQuery = query
-                    .OrderBy(item => item.TrashedAt);
+                        var query = dbContext.FilesToDeletion
+                            .IgnoreQueryFilters()
+                            .AsNoTracking();
 
-                var idList = await orderedQuery
-                    .Take(numberToDeletion)
-                    .Select(item => item.Id)
-                    .ToListAsync(stoppingToken);
+                        idList = await query
+                            .IgnoreQueryFilters()
+                            .OrderBy(item => item.TrashedAt)
+                            .Take(numberToDeletion)
+                            .Select(item => item.Id)
+                            .ToListAsync(stoppingToken);
+                    }
 
-                await Parallel.ForEachAsync(idList,
-                    new ParallelOptions
-                    { 
-                        MaxDegreeOfParallelism = _deletionOptions.ParallelsCount
-                    }, 
-                    async (id, stoppingToken) => await EraseAsync(dbContext,id,stoppingToken));
+                    await Parallel.ForEachAsync(idList,
+                        new ParallelOptions
+                        {
+                            MaxDegreeOfParallelism = _deletionOptions.ParallelsCount,
+                            CancellationToken = stoppingToken
+                        },
+                        async (id, ct) =>
+                        {
+                            try
+                            {
+                                await EraseAsync(_contextFactory, _storage, _storageOptions, id, ct);
+                            }
+                            catch (Exception)
+                            {
+                                throw;
+                            }
+                        });
+                }
+                catch(Exception)
+                {
+                    continue;
+                }
             }
-
         }
 
-        private async Task EraseAsync(AppDBContext DBcontextScope, Guid guid, CancellationToken ct = default)
+        private static async Task EraseAsync(IDbContextFactory<AppDBContext> contextFactory, 
+            IStorage storage, 
+            StorageOptions storageOptions,
+            Guid guid, 
+            CancellationToken ct = default)
         {
             var id = guid.ToString();
 
-            FileToDeletionModel model;
+            bool fileDeletionFailure = false;
+
+            bool canDeleteFromDB = true;
+            
+            await using var dbContext = await contextFactory.CreateDbContextAsync(ct);
 
             try
             {
-                model = await DBcontextScope.FilesToDeletion.FindAsync(guid) 
-                    ?? throw new KeyNotFoundException();
-
-                DBcontextScope.Remove(model);
-            }
-            catch (Exception)
-            {
-                return;
-            }
-
-            try
-            {
-                await DBcontextScope.SaveChangesAsync(ct);
-            }
-            catch (Exception)
-            {
-                return;
-            }
-
-
-            try
-            {
-                bool imageDeletionSuccess = false;
-
-                bool previewDeletionSuccess = false;
-
-                await _storage.ExecuteAsync(id,
+                await storage.ExecuteAsync(id,
                     async storage =>
                     {
-                        var imageDeletionTask = storage
-                        .TryDeleteFileAsync(id,
-                        _storageOptions.ImagesTrashDirectoryName,
-                        ct);
+                        var imageOpResult = await storage
+                        .TryDeleteAsyncWithEx(id,
+                        storageOptions.ImagesTrashDirectoryName,
+                        CancellationToken.None);
 
-                        var previewDeletionTask = storage
-                        .TryDeleteFileAsync(id,
-                        _storageOptions.PreviewsTrashDirectoryName,
-                        ct);
+                        var previewOpResult = await storage
+                        .TryDeleteAsyncWithEx(id,
+                        storageOptions.PreviewsTrashDirectoryName,
+                        CancellationToken.None);
 
-                        await Task.WhenAll(imageDeletionTask, previewDeletionTask);
-
-                        imageDeletionSuccess = await imageDeletionTask;
-
-                        previewDeletionSuccess = await previewDeletionTask;
+                        if(!imageOpResult.success || !previewOpResult.success)
+                        {
+                            throw new ErasingItemFailedException(id,
+                                new DeletionResult(imageOpResult.success, imageOpResult.ex),
+                                new DeletionResult(previewOpResult.success, previewOpResult.ex));
+                        }
                     },
                     ct);
-
-                if (!imageDeletionSuccess || !previewDeletionSuccess) throw new IOException();
             }
-            catch (Exception)
+            catch (OperationCanceledException)
             {
                 return;
             }
+            catch (ErasingItemFailedException ex)
+            {
+                fileDeletionFailure = true;
+                canDeleteFromDB = false;
+
+                if (ex.ImageResult.Success == false
+                    && ex.PreviewResult.Success == false
+                    && ex.ImageResult.Error is FileNotFoundException 
+                    && ex.PreviewResult.Error is FileNotFoundException) canDeleteFromDB = true;
+                else if(ex.ImageResult.Success == true
+                    && ex.PreviewResult.Success == false
+                    && ex.PreviewResult.Error is FileNotFoundException) canDeleteFromDB = true;
+                else if(ex.ImageResult.Success == false
+                    && ex.ImageResult.Error is FileNotFoundException
+                    && ex.PreviewResult.Success == true) canDeleteFromDB = true;
+            }
+            catch (Exception)
+            {
+                fileDeletionFailure = true;
+                canDeleteFromDB = false;
+            }
+
+            if (fileDeletionFailure && !canDeleteFromDB)
+            {
+                try
+                {
+                    var item = await dbContext.FilesToDeletion
+                        .IgnoreQueryFilters()
+                        .Where(model => model.Id == guid)
+                        .ExecuteUpdateAsync(model => model
+                        .SetProperty(m => m.DeletionFailures, m => m.DeletionFailures + 1),
+                        CancellationToken.None);
+
+                    return;
+                }
+                catch (Exception)
+                {
+                    return;
+                }
+            }
+
+            if (fileDeletionFailure == false || canDeleteFromDB == true)
+            {
+                try
+                {
+                    await dbContext.FilesToDeletion
+                        .IgnoreQueryFilters()
+                        .Where(item => item.Id == guid)
+                        .ExecuteDeleteAsync(CancellationToken.None);
+
+                    return;
+                }
+                catch (Exception)
+                {
+                    return;
+                }
+            }
+
         }
     }
 }
