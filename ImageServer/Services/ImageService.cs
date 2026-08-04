@@ -111,7 +111,7 @@ namespace ImageServer.Services
                 successful.Count,
                 failed.ToList());
 
-            return ServiceResult<SavedResult>.Ok(savedResult);
+            return ServiceResult<SavedResult>.Ok(savedResult, HttpStatuses.Ok);
         }
 
         private async Task<ImageModel> ProcessAsync(IFormFile image, CancellationToken ct)
@@ -149,15 +149,20 @@ namespace ImageServer.Services
         {
             Stream imageStream;
 
+            Guid guid;
+
+            if (Guid.TryParse(id, out var parsedId)) guid = parsedId;
+            else return ServiceResult<Stream>.Fail("Неверный формат ID", HttpStatuses.BadRequest);
+
             var result = await _storage.TryGetAsync(id, _storageOptions.ImagesDirectoryName, ct);
 
             if (result.success)
             {
                 imageStream = result.stream!;
             }
-            else return ServiceResult<Stream>.Fail($"Изображение с id:{id} не найдено");
+            else return ServiceResult<Stream>.Fail($"Изображение с id:{id} не найдено", HttpStatuses.NotFound);
 
-            return ServiceResult<Stream>.Ok(imageStream);
+            return ServiceResult<Stream>.Ok(imageStream, HttpStatuses.Ok);
         }
         
         public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetImagesPagedAsync(PagedImagesRequest request, CancellationToken ct)
@@ -194,12 +199,16 @@ namespace ImageServer.Services
         {
             if (request.PageNumber <= 0 || request.PageSize <= 0)
             {
-                return ServiceResult<PagedResponse<TDto>>.Fail("Номер страницы и размер страницы должны быть больше нуля");
+                return ServiceResult<PagedResponse<TDto>>.Fail(
+                    "Номер страницы и размер страницы должны быть больше нуля",
+                    HttpStatuses.BadRequest);
             }
 
             if(request.PageSize > _serviceOptions.MaxAllowedPageSize)
             {
-                return ServiceResult<PagedResponse<TDto>>.Fail($"Размер страницы не может превышать {_serviceOptions.MaxAllowedPageSize}");
+                return ServiceResult<PagedResponse<TDto>>.Fail(
+                    $"Размер страницы не может превышать {_serviceOptions.MaxAllowedPageSize}",
+                    HttpStatuses.BadRequest);
             }
 
             var isAscending = request.OrderingType == OrderingType.Ascending;
@@ -229,11 +238,13 @@ namespace ImageServer.Services
                     request.PageNumber,
                     request.PageSize);
 
-                return ServiceResult<PagedResponse<TDto>>.Ok(response);
+                return ServiceResult<PagedResponse<TDto>>.Ok(response, HttpStatuses.Ok);
             }
             catch (Exception ex)
             {
-                return ServiceResult<PagedResponse<TDto>>.Fail($"Ошибка получения данных: {ex.Message}");
+                return ServiceResult<PagedResponse<TDto>>.Fail(
+                    $"Ошибка получения данных: {ex.Message}", 
+                    HttpStatuses.InternalServerError);
             }
         }
 
@@ -257,11 +268,14 @@ namespace ImageServer.Services
 
             IReadOnlyDictionary<string, ServiceResult> relocationResult;
 
-            if(filesCount == 0) return ServiceResult<RelocationResponse>.Fail("Список идентификаторов пуст");
+            if(filesCount == 0)
+                return ServiceResult<RelocationResponse>.Fail("Список идентификаторов пуст", HttpStatuses.BadRequest);
 
-            if(filesCount > _serviceOptions.MaxAllowedBatchSize) return ServiceResult<RelocationResponse>.Fail($"Размер пакета не может превышать {_serviceOptions.MaxAllowedBatchSize}");
+            if(filesCount > _serviceOptions.MaxAllowedBatchSize) 
+                return ServiceResult<RelocationResponse>.Fail($"Размер пакета не может превышать {_serviceOptions.MaxAllowedBatchSize}", HttpStatuses.BadRequest);
 
-            if(ids.Distinct().ToList().Count != ids.Count) return ServiceResult<RelocationResponse>.Fail("Список идентификаторов содержит дубликаты");
+            if(ids.Distinct().ToList().Count != ids.Count)
+                return ServiceResult<RelocationResponse>.Fail("Список идентификаторов содержит дубликаты", HttpStatuses.BadRequest);
 
             bool shouldParallel = filesCount > _serviceOptions.MaxSequentalBatchSize;
 
@@ -284,7 +298,7 @@ namespace ImageServer.Services
                 .Select(item => item.Key)
                 .ToList();
 
-            return ServiceResult<RelocationResponse>.Ok(new RelocationResponse(successList, failedList));
+            return ServiceResult<RelocationResponse>.Ok(new RelocationResponse(successList, failedList), HttpStatuses.Ok);
         }
 
         private async Task<IReadOnlyDictionary<string, ServiceResult>> ExecuteParallelRelocAsync(List<string> ids,
@@ -311,7 +325,7 @@ namespace ImageServer.Services
                     catch (InvalidOperationException ex)
                     {
                         var tempGuid = Guid.NewGuid().ToString();
-                        resultDictionary.TryAdd($"Id с ошибкой:{id}.Временный id:{tempGuid}", ServiceResult.Fail(ex.Message));
+                        resultDictionary.TryAdd($"Id с ошибкой:{id}.Временный id:{tempGuid}", ServiceResult.Fail(ex.Message, HttpStatuses.InternalServerError));
                     }
                 });
 
@@ -336,7 +350,7 @@ namespace ImageServer.Services
                 catch(InvalidOperationException ex)
                 {
                     var tempGuid = Guid.NewGuid().ToString();
-                    resultDictionary.Add($"Id с ошибкой:{id}.Временный id:{tempGuid}", ServiceResult.Fail(ex.Message));
+                    resultDictionary.Add($"Id с ошибкой:{id}.Временный id:{tempGuid}", ServiceResult.Fail(ex.Message, HttpStatuses.InternalServerError));
                 }
             }
 
@@ -387,7 +401,7 @@ namespace ImageServer.Services
             Guid guid;
 
             if(Guid.TryParse(id, out var parsedId)) guid = parsedId;
-            else return ServiceResult.Fail("Неверный формат ID");
+            else return ServiceResult.Fail("Неверный формат ID", HttpStatuses.BadRequest);
 
             #region Удаление из базы данных(в памяти)
 
@@ -398,9 +412,13 @@ namespace ImageServer.Services
 
                 dbContext.Set<TModelFrom>().Remove(modelToDelete);
             }
+            catch (KeyNotFoundException ex)
+            {
+                return ServiceResult.Fail(ex.Message, HttpStatuses.NotFound);
+            }
             catch (Exception ex)
             {
-                return ServiceResult.Fail($"Ошибка удаления модели из базы данных: {ex.Message}. Операция не была выполнена.");
+                return ServiceResult.Fail($"Ошибка удаления модели из базы данных: {ex.Message}. Операция не была выполнена.", HttpStatuses.InternalServerError);
             }
 
             #endregion
@@ -452,7 +470,7 @@ namespace ImageServer.Services
             }
             catch(Exception ex)
             {
-                return ServiceResult.Fail(ex.Message);
+                return ServiceResult.Fail(ex.Message, HttpStatuses.InternalServerError);
             }
 
             #endregion
@@ -467,7 +485,8 @@ namespace ImageServer.Services
             catch(Exception ex)
             {
                 await RollbackFileChangesAsync();
-                return ServiceResult.Fail($"Ошибка добавления модели в базу назначения: {ex.Message}. Откат действий ФС и БД.");
+                return ServiceResult.Fail($"Ошибка добавления модели в базу назначения: {ex.Message}. Откат действий ФС и БД.",
+                    HttpStatuses.InternalServerError);
             }
 
             #endregion
@@ -481,12 +500,13 @@ namespace ImageServer.Services
             catch (Exception ex)
             {
                 await RollbackFileChangesAsync();
-                return ServiceResult.Fail($"Ошибка сохранения изменений в базе данных: {ex.Message}. Откат действий ФС и БД.");
+                return ServiceResult.Fail($"Ошибка сохранения изменений в базе данных: {ex.Message}. Откат действий ФС и БД.",
+                    HttpStatuses.InternalServerError);
             }
 
             #endregion
 
-            return ServiceResult.Ok();
+            return ServiceResult.Ok(HttpStatuses.Ok);
 
             #region Локальный метод отката изменений в файловой системе 
 
@@ -520,7 +540,7 @@ namespace ImageServer.Services
                 Guid guid;
 
                 if (Guid.TryParse(id, out var parsedId)) guid = parsedId;
-                else return ServiceResult.Fail("Неверный формат ID");
+                else return ServiceResult.Fail("Неверный формат ID", HttpStatuses.BadRequest);
 
                 var image = await _dbContext.Images.FindAsync(guid, ct) ?? throw new Exception("Сущность не найдена");
 
@@ -528,11 +548,11 @@ namespace ImageServer.Services
 
                 await _dbContext.SaveChangesAsync(ct);
 
-                return ServiceResult.Ok();
+                return ServiceResult.Ok(HttpStatuses.Ok);
             }
             catch (Exception ex)
             {
-                return ServiceResult.Fail(ex.Message);
+                return ServiceResult.Fail(ex.Message, HttpStatuses.InternalServerError);
             }
         }
     }

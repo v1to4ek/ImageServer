@@ -2,7 +2,6 @@
 using ImageServer.Configuration;
 using ImageServer.Enums;
 using ImageServer.Models;
-using Microsoft.Extensions.Options;
 using System.Linq.Expressions;
 
 namespace ImageServer.DTOs

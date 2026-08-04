@@ -17,9 +17,9 @@ namespace ImageServer
                 {
                     var result = await service.GetImagesPagedAsync(request, ct);
 
-                    return result.IsSuccess
-                    ? Results.Ok(result.Data)
-                    : Results.BadRequest(result.Error);
+                    return result.
+                    ToHttpResult(data => Results.Ok(data));
+
                 });
 
             webApplication.MapGet("/trash",
@@ -29,9 +29,9 @@ namespace ImageServer
                 {
                     var result = await service.GetTrashedPagedAsync(requst, ct);
 
-                    return result.IsSuccess
-                    ? Results.Ok(result.Data)
-                    : Results.BadRequest(result.Error);
+                    return result
+                    .ToHttpResult(data => Results.Ok(data));
+
                 });
 
             webApplication.MapGet("/images/{id}",
@@ -41,9 +41,9 @@ namespace ImageServer
                 {
                     var result = await service.GetAsync(id, ct);
 
-                    return result.IsSuccess
-                    ? Results.File(result.Data!,"image/webp", id)
-                    : Results.NotFound(result.Error);
+                    return result
+                    .ToHttpResult(data => Results.File(data, "image/webp", id));
+
                 });
 
             webApplication.MapPut("/images/{id}/favourite",
@@ -54,9 +54,9 @@ namespace ImageServer
                 {
                     var result = await service.UpdateAsync(id, command, ct);
 
-                    return result.IsSuccess
-                    ? Results.NoContent()
-                    : Results.NotFound(result.Error);
+                    return result
+                    .ToHttpResult(() => Results.NoContent());
+
                 });
 
             webApplication.MapPut("/images/{id}/rename", 
@@ -67,9 +67,9 @@ namespace ImageServer
                 {
                     var result = await service.UpdateAsync(id, command, ct);
 
-                    return result.IsSuccess
-                    ? Results.NoContent()
-                    : Results.NotFound(result.Error);
+                    return result
+                    .ToHttpResult(() => Results.NoContent());
+
                 });
 
             webApplication.MapPost("/images",
@@ -79,7 +79,10 @@ namespace ImageServer
                 {
                     var result = await service.SaveAsync(formFiles, ct);
 
-                    return Results.Ok(result.Data!.SuccessCount);
+                    //Заменить на Created()
+                    return result
+                    .ToHttpResult(data => Results.Ok(data.SuccessCount));
+
                 }).DisableAntiforgery();
 
             webApplication.MapDelete("/images/{id}",
@@ -89,9 +92,9 @@ namespace ImageServer
                 {
                     var result = await service.DeleteOneAsync(id, ct);
 
-                    return result.IsSuccess
-                    ? Results.NoContent()
-                    : Results.NotFound(result.Error);
+                    return result
+                    .ToHttpResult(() => Results.NoContent());
+
                 });
 
             webApplication.MapPost("/images/{id}/restore",
@@ -101,9 +104,9 @@ namespace ImageServer
                 {
                     var result = await service.RestoreOneAsync(id, ct);
 
-                    return result.IsSuccess
-                    ? Results.NoContent()
-                    : Results.NotFound(result.Error);
+                    return result
+                    .ToHttpResult(() => Results.NoContent());
+
                 });
 
             webApplication.MapPost("/images/restore-many",
@@ -113,9 +116,9 @@ namespace ImageServer
                 {
                     var result = await service.RestoreManyAsync(ids, ct);
 
-                    return result.IsSuccess
-                    ? Results.Ok(result.Data)
-                    : Results.NotFound(result.Error);
+                    return result
+                    .ToHttpResult(data => Results.Ok(data));
+
                 });
 
             webApplication.MapDelete("/images/delete-many",
@@ -125,9 +128,9 @@ namespace ImageServer
                 {
                     var result = await service.DeleteManyAsync(ids, ct);
 
-                    return result.IsSuccess
-                    ? Results.Ok(result.Data)
-                    : Results.NotFound(result.Error);
+                    return result
+                    .ToHttpResult(data => Results.Ok(data));
+
                 });
         }
 
