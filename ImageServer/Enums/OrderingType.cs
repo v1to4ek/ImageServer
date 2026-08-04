@@ -1,6 +1,6 @@
 ﻿namespace ImageServer.Enums
 {
-    public enum OrderingTypes
+    public enum OrderingType
     {
         Descending,
         Ascending

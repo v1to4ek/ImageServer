@@ -2,14 +2,14 @@
 
 namespace ImageServer.DTOs
 {
-    public record PagedRequest
+    public record class PagedImagesRequest
     {
         public int PageNumber { get; set; }
             
         public int PageSize { get; set; }
 
-        public OrderingTypes OrderingType { get; set; }
+        public OrderingType OrderingType { get; set; }
 
-        public OrderingSelectors OrderingSelector { get; set; }
+        public ImageOrderingSelectors OrderingSelector { get; set; }
     };
 }

@@ -15,7 +15,7 @@ namespace ImageServer.Services.Storages
 
         private readonly DeletionOptions _deletionOptions;
 
-        private readonly IDbContextFactory<AppDBContext> _contextFactory;
+        private readonly IDbContextFactory<AppDbContext> _contextFactory;
 
         private class ErasingItemFailedException(string id, DeletionResult imageResult, DeletionResult previewResult)
             : Exception($"Ошибка при удалении файла с id: {id} из корзины.")
@@ -29,7 +29,7 @@ namespace ImageServer.Services.Storages
         public DeletionBackgroundService(IStorage storage, 
             IOptions<StorageOptions> storageOptions,
             IOptions<DeletionOptions> deletionOptions,
-            IDbContextFactory<AppDBContext> contextFactory)
+            IDbContextFactory<AppDbContext> contextFactory)
         {
             _storage = storage;
 
@@ -42,7 +42,7 @@ namespace ImageServer.Services.Storages
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            var interval = _deletionOptions.DelayTimeInSeconds;
+            var interval = _deletionOptions.CycleTimeInSeconds;
 
             var numberToDeletion = _deletionOptions.OneCycleDeletionsCount;
 
@@ -96,7 +96,7 @@ namespace ImageServer.Services.Storages
             }
         }
 
-        private static async Task EraseAsync(IDbContextFactory<AppDBContext> contextFactory, 
+        private static async Task EraseAsync(IDbContextFactory<AppDbContext> contextFactory, 
             IStorage storage, 
             StorageOptions storageOptions,
             Guid guid, 

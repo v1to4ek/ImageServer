@@ -1,6 +1,7 @@
 ﻿using ImageServer.DTOs;
 using ImageServer.Services;
 using ImageServer.Services.Commands;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ImageServer
 {
@@ -11,10 +12,22 @@ namespace ImageServer
 
             webApplication.MapGet("/images", 
                 async (ImageService service,
-                [AsParameters] PagedRequest request, 
+                [AsParameters] PagedImagesRequest request, 
                 CancellationToken ct) =>
                 {
-                    var result = await service.GetPagedResultAsync(request, ct);
+                    var result = await service.GetImagesPagedAsync(request, ct);
+
+                    return result.IsSuccess
+                    ? Results.Ok(result.Data)
+                    : Results.BadRequest(result.Error);
+                });
+
+            webApplication.MapGet("/trash",
+                async (ImageService service,
+                [AsParameters] PagedTrashedRequest requst,
+                CancellationToken ct) =>
+                {
+                    var result = await service.GetTrashedPagedAsync(requst, ct);
 
                     return result.IsSuccess
                     ? Results.Ok(result.Data)
@@ -66,7 +79,7 @@ namespace ImageServer
                 {
                     var result = await service.SaveAsync(formFiles, ct);
 
-                    return Results.Ok(result.Data!.SavedCount);
+                    return Results.Ok(result.Data!.SuccessCount);
                 }).DisableAntiforgery();
 
             webApplication.MapDelete("/images/{id}",
@@ -74,7 +87,7 @@ namespace ImageServer
                 string id,
                 CancellationToken ct) =>
                 {
-                    var result = await service.DeleteAsync(id, ct);
+                    var result = await service.DeleteOneAsync(id, ct);
 
                     return result.IsSuccess
                     ? Results.NoContent()
@@ -86,13 +99,36 @@ namespace ImageServer
                 string id,
                 CancellationToken ct) =>
                 {
-                    var result = await service.RestoreAsync(id, ct);
+                    var result = await service.RestoreOneAsync(id, ct);
 
                     return result.IsSuccess
                     ? Results.NoContent()
                     : Results.NotFound(result.Error);
                 });
 
+            webApplication.MapPost("/images/restore-many",
+                async (ImageService service,
+                List<string> ids,
+                CancellationToken ct) =>
+                {
+                    var result = await service.RestoreManyAsync(ids, ct);
+
+                    return result.IsSuccess
+                    ? Results.Ok(result.Data)
+                    : Results.NotFound(result.Error);
+                });
+
+            webApplication.MapDelete("/images/delete-many",
+                async (ImageService service,
+                [FromBody] List<string> ids,
+                CancellationToken ct) =>
+                {
+                    var result = await service.DeleteManyAsync(ids, ct);
+
+                    return result.IsSuccess
+                    ? Results.Ok(result.Data)
+                    : Results.NotFound(result.Error);
+                });
         }
 
         public static void AddApplicationEndpoints(this WebApplication webApplication)

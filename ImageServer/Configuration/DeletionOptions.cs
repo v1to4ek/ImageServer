@@ -8,7 +8,7 @@ namespace ImageServer.Configuration
 
         public int OneCycleDeletionsCount { get; set; } = 20;
 
-        public int DelayTimeInSeconds { get; set; } = 100;
+        public int CycleTimeInSeconds { get; set; } = 100;
 
         public int ParallelsCount { get; set; } = 1;
     }

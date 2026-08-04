@@ -11,7 +11,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 namespace ImageServer.Migrations
 {
-    [DbContext(typeof(AppDBContext))]
+    [DbContext(typeof(AppDbContext))]
     [Migration("20260728114123_RemovedAttemptsAndFaultsProps")]
     partial class RemovedAttemptsAndFaultsProps
     {

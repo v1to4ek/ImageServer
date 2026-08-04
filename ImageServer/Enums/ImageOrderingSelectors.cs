@@ -1,6 +1,6 @@
 ﻿namespace ImageServer.Enums
 {
-    public enum OrderingSelectors
+    public enum ImageOrderingSelectors
     {
         Date,
         Name,

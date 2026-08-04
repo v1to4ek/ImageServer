@@ -1,18 +1,18 @@
 ﻿namespace ImageServer.DTOs
 {
-    public record ImageDTO
+    public record class ImageDTO
     {
-        public string Id { get; set; }
+        public string Id { get; init; }
 
-        public string ImageUrl { get; set; }
+        public string ImageUrl { get; init; }
 
-        public string PreviewUrl { get; set; }
+        public string PreviewUrl { get; init; }
 
-        public string Name { get; set; }
+        public string Name { get; init; }
 
-        public bool Favorite { get; set; }
+        public bool Favorite { get; init; }
 
-        public DateTime Date { get; set; }
+        public DateTime Date { get; init; }
 
         public ImageDTO(string id, string imageDirectory, string previewDirectory, string name, bool favourite, DateTime date)
         {

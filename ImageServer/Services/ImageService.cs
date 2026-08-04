@@ -9,13 +9,14 @@ using ImageServer.Services.Storages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
-using System.Linq.Expressions;
 
 namespace ImageServer.Services
 {
     public class ImageService
     {
-        private readonly AppDBContext _DBcontext;
+        private readonly AppDbContext _dbContext;
+
+        private readonly IDbContextFactory<AppDbContext> _dbContextFactory;
 
         private readonly IImageProcessor _processor;
 
@@ -24,15 +25,6 @@ namespace ImageServer.Services
         private readonly ImgServiceOptions _serviceOptions;
 
         private readonly StorageOptions _storageOptions;
-
-        private delegate IOrderedQueryable<ImageModel> ImageModelFilterDelegate(IQueryable<ImageModel> query, bool ascending);
-
-        private static readonly Dictionary<OrderingSelectors, ImageModelFilterDelegate> _orderingSelectors = new()
-        {
-            [OrderingSelectors.Date] = CreateFilter(model => model.CreatedAt),
-            [OrderingSelectors.Name] = CreateFilter(model => model.Name),
-            [OrderingSelectors.Favourite] = CreateFilter(model => model.IsFavourite)
-        };
 
         private readonly record struct RelocationPaths
         {
@@ -59,13 +51,16 @@ namespace ImageServer.Services
             };
         }
 
-        public ImageService(AppDBContext DBcontext, 
+        public ImageService(AppDbContext DBcontext, 
+            IDbContextFactory<AppDbContext> dbContextFactory,
             IImageProcessor processor, 
             IStorage storage, 
             IOptions<ImgServiceOptions> serviceOptions, 
             IOptions<StorageOptions> storageOptions)
         {
-            _DBcontext = DBcontext;
+            _dbContext = DBcontext;
+
+            _dbContextFactory = dbContextFactory;
 
             _processor = processor;
 
@@ -75,12 +70,6 @@ namespace ImageServer.Services
 
             _storageOptions = storageOptions.Value;
         }
-
-        private static ImageModelFilterDelegate CreateFilter<TSelectorField>
-            (Expression<Func<ImageModel, TSelectorField>> selector) =>
-            (query, ascending) => ascending
-            ? query.OrderBy(selector)
-            : query.OrderByDescending(selector);
 
         public async Task<ServiceResult<SavedResult>> SaveAsync(IFormFileCollection images, CancellationToken ct)
         {
@@ -113,9 +102,9 @@ namespace ImageServer.Services
 
             if(!successful.IsEmpty)
             {
-                await _DBcontext.AddRangeAsync(successful, ct);
+                await _dbContext.AddRangeAsync(successful, ct);
 
-                await _DBcontext.SaveChangesAsync(ct);
+                await _dbContext.SaveChangesAsync(ct);
             }
 
             var savedResult = new SavedResult(
@@ -170,72 +159,194 @@ namespace ImageServer.Services
 
             return ServiceResult<Stream>.Ok(imageStream);
         }
-
-        public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetPagedResultAsync(PagedRequest request, CancellationToken ct)
+        
+        public async Task<ServiceResult<PagedResponse<ImageDTO>>> GetImagesPagedAsync(PagedImagesRequest request, CancellationToken ct)
         {
-            if(request.PageNumber <= 0 || request.PageSize <= 0)
+            var serviceRequest = new PagedImagesServiceRequest(request.PageNumber,
+                request.PageSize,
+                request.OrderingSelector,
+                request.OrderingType,
+                _storageOptions);
+
+            var serviceResult = await GetPagedAsync(serviceRequest, ct);
+
+            return serviceResult;
+        }
+
+        public async Task<ServiceResult<PagedResponse<TrashedDTO>>> GetTrashedPagedAsync(PagedTrashedRequest request, CancellationToken ct)
+        {
+            var serviceRequest = new PagedTrashedServiceRequest(request.PageNumber,
+                request.PageSize,
+                request.OrderingSelector,
+                request.OrderingType);
+
+            var serviceResult = await GetPagedAsync(serviceRequest, ct);
+
+            return serviceResult;
+        }
+
+        private async Task<ServiceResult<PagedResponse<TDto>>> GetPagedAsync<TDBModel,TDto, TOrderingSelector>
+            (PagedServiceRequestBase<TDBModel, TDto, TOrderingSelector> request,
+            CancellationToken ct)
+            where TDBModel : class
+            where TDto : class
+            where TOrderingSelector : struct, Enum
+        {
+            if (request.PageNumber <= 0 || request.PageSize <= 0)
             {
-                return ServiceResult<PagedResponse<ImageDTO>>.Fail("Номер страницы и размер страницы должны быть больше нуля");
+                return ServiceResult<PagedResponse<TDto>>.Fail("Номер страницы и размер страницы должны быть больше нуля");
             }
 
             if(request.PageSize > _serviceOptions.MaxAllowedPageSize)
             {
-                return ServiceResult<PagedResponse<ImageDTO>>.Fail($"Размер страницы не может превышать {_serviceOptions.MaxAllowedPageSize}");
+                return ServiceResult<PagedResponse<TDto>>.Fail($"Размер страницы не может превышать {_serviceOptions.MaxAllowedPageSize}");
             }
 
-            var isAscending = request.OrderingType == OrderingTypes.Ascending;
+            var isAscending = request.OrderingType == OrderingType.Ascending;
 
             var orderingSelector = request.OrderingSelector;
 
-            ImageModelFilterDelegate filter = null!;
-
-            if (_orderingSelectors.TryGetValue(orderingSelector, out var resultDelegate))
-            {
-                filter = resultDelegate;
-            }
-            else
-            {
-                filter = _orderingSelectors[0];
-            }
+            var filterDelegate = request.FilterDictionary
+                .GetValueOrDefault(orderingSelector, request.DefaultFilter);
 
             try
             {
-                var imgQuery = _DBcontext.Images.AsNoTracking();
+                var query = _dbContext.Set<TDBModel>().AsNoTracking();
 
-                var orderedQuery = filter(imgQuery, isAscending);
+                var orderedQuery = filterDelegate(query, isAscending);
 
-                var totalCount = await imgQuery.CountAsync(ct);
+                var total = await query.CountAsync(ct);
 
-                var itemsToTake = await orderedQuery
-                    .Skip((request.PageNumber - 1) * request.PageSize)
+                var takenItems = await orderedQuery
+                    .Skip((request.PageNumber -1) * request.PageSize)
                     .Take(request.PageSize)
-                    .Select(img =>
-                    new ImageDTO(
-                        img.Id.ToString(),
-                        _storageOptions.ImagesDirectoryName,
-                        _storageOptions.PreviewsDirectoryName,
-                        img.Name,
-                        img.IsFavourite,
-                        img.CreatedAt))
+                    .Select(request.DtoSelectorFactory)
                     .ToListAsync(ct);
 
-                var response = new PagedResponse<ImageDTO>
-                    (itemsToTake,
-                    totalCount,
+                var response = new PagedResponse<TDto>
+                    (takenItems,
+                    total,
                     request.PageNumber,
                     request.PageSize);
 
-                return ServiceResult<PagedResponse<ImageDTO>>.Ok(response);
+                return ServiceResult<PagedResponse<TDto>>.Ok(response);
             }
             catch (Exception ex)
             {
-                return ServiceResult<PagedResponse<ImageDTO>>.Fail($"Ошибка получения данных: {ex.Message}");
+                return ServiceResult<PagedResponse<TDto>>.Fail($"Ошибка получения данных: {ex.Message}");
             }
         }
 
-        public async Task<ServiceResult> DeleteAsync(string id, CancellationToken ct)
+        public async Task<ServiceResult> DeleteOneAsync(string id, CancellationToken ct)
+            => await DeleteCoreAsync(id, _dbContext, ct);
+
+        public async Task<ServiceResult> RestoreOneAsync(string id, CancellationToken ct)
+            => await RestoreCoreAsync(id, _dbContext, ct);
+
+        public async Task<ServiceResult<RelocationResponse>> DeleteManyAsync(List<string> ids, CancellationToken ct)
+            => await RelocateManyAsync(ids, DeleteCoreAsync, ct);
+
+        public async Task<ServiceResult<RelocationResponse>> RestoreManyAsync(List<string> ids, CancellationToken ct)
+            => await RelocateManyAsync(ids, RestoreCoreAsync, ct);
+
+        private async Task<ServiceResult<RelocationResponse>> RelocateManyAsync(List<string> ids,
+            Func<string, AppDbContext, CancellationToken, Task<ServiceResult>> operationFactory,
+            CancellationToken ct)
         {
-            var paths = RelocationPaths.ToTrash(_storageOptions.ImagesDirectoryName,
+            var filesCount = ids.Count;
+
+            IReadOnlyDictionary<string, ServiceResult> relocationResult;
+
+            if(filesCount == 0) return ServiceResult<RelocationResponse>.Fail("Список идентификаторов пуст");
+
+            if(filesCount > _serviceOptions.MaxAllowedBatchSize) return ServiceResult<RelocationResponse>.Fail($"Размер пакета не может превышать {_serviceOptions.MaxAllowedBatchSize}");
+
+            if(ids.Distinct().ToList().Count != ids.Count) return ServiceResult<RelocationResponse>.Fail("Список идентификаторов содержит дубликаты");
+
+            bool shouldParallel = filesCount > _serviceOptions.MaxSequentalBatchSize;
+
+            if (shouldParallel)
+            {
+                relocationResult = await ExecuteParallelRelocAsync(ids, operationFactory, ct);
+            }
+            else
+            {
+                relocationResult = await ExecuteSequentialRelocAsync(ids, operationFactory, ct);
+            }
+
+            var successList = relocationResult
+                .Where(item => item.Value.IsSuccess)
+                .Select(item => item.Key)
+                .ToList();
+
+            var failedList = relocationResult
+                .Where(item => !item.Value.IsSuccess)
+                .Select(item => item.Key)
+                .ToList();
+
+            return ServiceResult<RelocationResponse>.Ok(new RelocationResponse(successList, failedList));
+        }
+
+        private async Task<IReadOnlyDictionary<string, ServiceResult>> ExecuteParallelRelocAsync(List<string> ids,
+            Func<string, AppDbContext, CancellationToken, Task<ServiceResult>> operationFactory,
+            CancellationToken ct)
+        {
+            var resultDictionary = new ConcurrentDictionary<string, ServiceResult>();
+
+            await Parallel.ForEachAsync(ids,
+                new ParallelOptions
+                {
+                    CancellationToken = ct,
+                    MaxDegreeOfParallelism = _serviceOptions.ParallelismDegree
+                },
+                async (id, token) =>
+                {
+                    try
+                    {
+                        await using var dbContextScope = await _dbContextFactory.CreateDbContextAsync(token);
+                        var result = await operationFactory(id, dbContextScope, token);
+                        var success = resultDictionary.TryAdd(id, result);
+                        if (!success) throw new InvalidOperationException($"Ошибка добавления результата операции для ID:{id}.Возможны повторяющиеся идентификаторы");
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        var tempGuid = Guid.NewGuid().ToString();
+                        resultDictionary.TryAdd($"Id с ошибкой:{id}.Временный id:{tempGuid}", ServiceResult.Fail(ex.Message));
+                    }
+                });
+
+            return resultDictionary;
+        }
+
+        private async Task<IReadOnlyDictionary<string, ServiceResult>> ExecuteSequentialRelocAsync(List<string> ids,
+            Func<string, AppDbContext, CancellationToken, Task<ServiceResult>> operationFactory,
+            CancellationToken ct)
+        {
+            var resultDictionary = new Dictionary<string, ServiceResult>();
+
+            foreach(var id in ids)
+            {
+                try
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var result = await operationFactory(id, _dbContext, ct);
+                    var success = resultDictionary.TryAdd(id, result);
+                    if(!success) throw new InvalidOperationException($"Ошибка добавления результата операции для ID:{id}.Возможны повторяющиеся идентификаторы");
+                }
+                catch(InvalidOperationException ex)
+                {
+                    var tempGuid = Guid.NewGuid().ToString();
+                    resultDictionary.Add($"Id с ошибкой:{id}.Временный id:{tempGuid}", ServiceResult.Fail(ex.Message));
+                }
+            }
+
+            return resultDictionary;
+        }
+
+        private async Task<ServiceResult> DeleteCoreAsync(string id, AppDbContext dbContext, CancellationToken ct)
+        {
+            var paths = RelocationPaths.ToTrash(
+                _storageOptions.ImagesDirectoryName,
                 _storageOptions.PreviewsDirectoryName,
                 _storageOptions.ImagesTrashDirectoryName,
                 _storageOptions.PreviewsTrashDirectoryName);
@@ -243,30 +354,32 @@ namespace ImageServer.Services
             var operationResult = await RelocateAtomicAsync(id, paths,
                 async (context, guid) => (await context.Images.FindAsync(guid, ct))!,
                 guid => new FileToDeletionModel(guid),
+                dbContext,
                 ct);
 
             return operationResult;
         }
 
-        public async Task<ServiceResult> RestoreAsync(string id, CancellationToken ct)
+        private async Task<ServiceResult> RestoreCoreAsync(string id, AppDbContext dbContext, CancellationToken ct)
         {
-            var paths = RelocationPaths.FromTrash(_storageOptions.ImagesDirectoryName,
+            var paths = RelocationPaths.FromTrash(
+                _storageOptions.ImagesDirectoryName,
                 _storageOptions.PreviewsDirectoryName,
                 _storageOptions.ImagesTrashDirectoryName,
                 _storageOptions.PreviewsTrashDirectoryName);
 
-            var operationResult = await RelocateAtomicAsync(id, paths,
+            return await RelocateAtomicAsync(id, paths,
                 async (context, guid) => (await context.FilesToDeletion.FindAsync(guid, ct))!,
                 guid => new ImageModel(guid),
+                dbContext,
                 ct);
-
-            return operationResult;
         }
 
-        private async Task<ServiceResult> RelocateAtomicAsync<TModelFrom,TModelTo>(string id,
+        private async Task<ServiceResult> RelocateAtomicAsync<TModelFrom, TModelTo>(string id,
             RelocationPaths relocationPaths,
-            Func<AppDBContext, Guid, ValueTask<TModelFrom>> modelToDeleteFactory,
+            Func<AppDbContext, Guid, ValueTask<TModelFrom>> modelToDeleteFactory,
             Func<Guid, TModelTo> modelToSaveFactory,
+            AppDbContext dbContext,
             CancellationToken ct)
             where TModelFrom : class
             where TModelTo : class
@@ -280,10 +393,10 @@ namespace ImageServer.Services
 
             try
             {
-                var modelToDelete = await modelToDeleteFactory(_DBcontext, guid)
+                var modelToDelete = await modelToDeleteFactory(dbContext, guid)
                     ?? throw new KeyNotFoundException($"Запись с ID:{id} не найдена");
 
-                _DBcontext.Set<TModelFrom>().Remove(modelToDelete);
+                dbContext.Set<TModelFrom>().Remove(modelToDelete);
             }
             catch (Exception ex)
             {
@@ -349,7 +462,7 @@ namespace ImageServer.Services
             try
             {
                 var relocatedModel = modelToSaveFactory(guid);
-                await _DBcontext.Set<TModelTo>().AddAsync(relocatedModel, ct);
+                await dbContext.Set<TModelTo>().AddAsync(relocatedModel, ct);
             }
             catch(Exception ex)
             {
@@ -363,7 +476,7 @@ namespace ImageServer.Services
 
             try
             {
-                await _DBcontext.SaveChangesAsync(ct);
+                await dbContext.SaveChangesAsync(ct);
             }
             catch (Exception ex)
             {
@@ -409,11 +522,11 @@ namespace ImageServer.Services
                 if (Guid.TryParse(id, out var parsedId)) guid = parsedId;
                 else return ServiceResult.Fail("Неверный формат ID");
 
-                var image = await _DBcontext.Images.FindAsync(guid, ct) ?? throw new Exception("Сущность не найдена");
+                var image = await _dbContext.Images.FindAsync(guid, ct) ?? throw new Exception("Сущность не найдена");
 
                 command.Execute(image);
 
-                await _DBcontext.SaveChangesAsync(ct);
+                await _dbContext.SaveChangesAsync(ct);
 
                 return ServiceResult.Ok();
             }

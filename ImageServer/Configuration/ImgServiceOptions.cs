@@ -9,5 +9,9 @@ namespace ImageServer.Configuration
         public int ParallelismDegree { get; set; } = Environment.ProcessorCount == 1 ? 1 : Environment.ProcessorCount/2;
 
         public int MaxAllowedPageSize { get; set; } = 100;
+
+        public int MaxSequentalBatchSize { get; set; } = 25;
+
+        public int MaxAllowedBatchSize { get; set; } = 100;
     }
 }

@@ -1,6 +1,6 @@
 ﻿namespace ImageServer.Services
 {
-    public record ServiceResult<TData> 
+    public record class ServiceResult<TData> 
     {
         public bool IsSuccess { get; init; }
 
@@ -15,7 +15,7 @@
             new() { IsSuccess = false, Error = error };
     }
 
-    public record ServiceResult
+    public record class ServiceResult
     {
         public bool IsSuccess { get; init; }
 
@@ -28,7 +28,4 @@
             new() { IsSuccess = false, Error = error };
 
     }
-
-    public record SavedResult(int SavedCount, List<string>? ErrorList);
-
 }

@@ -1,6 +1,6 @@
 ﻿namespace ImageServer.DTOs
 {
-    public record PagedResponse<T>(
+    public record class PagedResponse<T>(
         IEnumerable<T> Items,
         int TotalCount,
         int PageNumber,
